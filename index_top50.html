@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CryptoShield — Risk Intelligence</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #080c10;
+      --surface: #0d1318;
+      --border: #1a2530;
+      --accent: #00e5ff;
+      --accent2: #ff6b35;
+      --warn: #ffcc00;
+      --danger: #ff3d5a;
+      --safe: #00e676;
+      --text: #e0eaf2;
+      --muted: #4a6070;
+      --low: #00e676;
+      --med: #ffcc00;
+      --high: #ff3d5a;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Syne', sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* grid bg */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(0,229,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,229,255,0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container {
+      position: relative;
+      z-index: 1;
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 60px 24px 100px;
+    }
+
+    /* Header */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 64px;
+    }
+
+    .logo-icon {
+      width: 44px; height: 44px;
+      border: 2px solid var(--accent);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px;
+      box-shadow: 0 0 16px rgba(0,229,255,0.3);
+    }
+
+    .logo-text {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+    }
+    .logo-text span { color: var(--accent); }
+
+    .badge {
+      margin-left: auto;
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      padding: 4px 10px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    /* Hero */
+    .hero {
+      margin-bottom: 52px;
+    }
+
+    .hero h1 {
+      font-size: clamp(32px, 6vw, 54px);
+      font-weight: 800;
+      line-height: 1.05;
+      letter-spacing: -1.5px;
+      margin-bottom: 16px;
+    }
+    .hero h1 .hl { color: var(--accent); }
+
+    .hero p {
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.7;
+      max-width: 480px;
+      font-weight: 400;
+    }
+
+    /* Input Card */
+    .input-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+      margin-bottom: 40px;
+      position: relative;
+      overflow: hidden;
+    }
+    .input-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, var(--accent), transparent);
+    }
+
+    .input-label {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-bottom: 12px;
+      display: block;
+    }
+
+    .input-row {
+      display: flex;
+      gap: 12px;
+      align-items: stretch;
+    }
+
+    #addressInput {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-family: 'Space Mono', monospace;
+      font-size: 13px;
+      padding: 14px 18px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    #addressInput::placeholder { color: var(--muted); }
+    #addressInput:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(0,229,255,0.08);
+    }
+
+    #calcBtn {
+      background: var(--accent);
+      color: #000;
+      border: none;
+      border-radius: 10px;
+      padding: 14px 28px;
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 14px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.2s, transform 0.1s, box-shadow 0.2s;
+      letter-spacing: 0.3px;
+    }
+    #calcBtn:hover {
+      background: #33eaff;
+      box-shadow: 0 0 20px rgba(0,229,255,0.4);
+    }
+    #calcBtn:active { transform: scale(0.97); }
+    #calcBtn:disabled {
+      background: var(--border);
+      color: var(--muted);
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+    .chain-hint {
+      margin-top: 14px;
+      font-size: 12px;
+      color: var(--muted);
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .chain-pill {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 3px 10px;
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      color: var(--muted);
+    }
+
+    /* Status */
+    #statusMsg {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      background: rgba(0,229,255,0.05);
+      border: 1px solid rgba(0,229,255,0.2);
+      border-radius: 10px;
+      padding: 14px 18px;
+      margin-bottom: 32px;
+      font-family: 'Space Mono', monospace;
+      font-size: 12px;
+      color: var(--accent);
+    }
+    .spinner {
+      width: 16px; height: 16px;
+      border: 2px solid rgba(0,229,255,0.2);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Error */
+    #errorMsg {
+      display: none;
+      background: rgba(255,61,90,0.08);
+      border: 1px solid rgba(255,61,90,0.3);
+      border-radius: 10px;
+      padding: 14px 18px;
+      margin-bottom: 32px;
+      font-size: 13px;
+      color: var(--danger);
+    }
+
+    /* Results */
+    #results { display: none; }
+
+    .results-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      flex-wrap: gap;
+    }
+    .results-title {
+      font-size: 13px;
+      font-family: 'Space Mono', monospace;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+    }
+    .detected-chain {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 6px;
+      background: rgba(0,229,255,0.08);
+      color: var(--accent);
+      border: 1px solid rgba(0,229,255,0.2);
+    }
+
+    /* Parameter Card */
+    .param-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px 32px;
+      margin-bottom: 16px;
+      position: relative;
+      transition: border-color 0.3s;
+      animation: fadeUp 0.4s ease both;
+    }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .param-card.risk-low  { border-color: rgba(0,230,118,0.35); }
+    .param-card.risk-med  { border-color: rgba(255,204,0,0.35); }
+    .param-card.risk-high { border-color: rgba(255,61,90,0.35); }
+
+    .param-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 20px;
+      gap: 16px;
+    }
+    .param-name {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .param-desc {
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 400;
+    }
+
+    .risk-badge {
+      flex-shrink: 0;
+      padding: 6px 16px;
+      border-radius: 8px;
+      font-family: 'Space Mono', monospace;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+    .risk-badge.low  { background: rgba(0,230,118,0.12); color: var(--low);  border: 1px solid rgba(0,230,118,0.3); }
+    .risk-badge.med  { background: rgba(255,204,0,0.12);  color: var(--med);  border: 1px solid rgba(255,204,0,0.3); }
+    .risk-badge.high { background: rgba(255,61,90,0.12);  color: var(--high); border: 1px solid rgba(255,61,90,0.3); }
+
+    .score-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .score-dots {
+      display: flex;
+      gap: 6px;
+    }
+    .dot {
+      width: 12px; height: 12px;
+      border-radius: 3px;
+      background: var(--border);
+      transition: background 0.3s;
+    }
+    .dot.active.low  { background: var(--low); box-shadow: 0 0 6px var(--low); }
+    .dot.active.med  { background: var(--med); box-shadow: 0 0 6px var(--med); }
+    .dot.active.high { background: var(--high); box-shadow: 0 0 6px var(--high); }
+    .score-label {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    /* Stats grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .stat-box {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+    }
+    .stat-label {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 6px;
+    }
+    .stat-value {
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+    }
+    .stat-value.accent { color: var(--accent); }
+    .stat-value.warn   { color: var(--warn); }
+    .stat-value.danger { color: var(--danger); }
+    .stat-value.safe   { color: var(--safe); }
+
+    /* Warnings */
+    .warnings {
+      margin-top: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .warning-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255,204,0,0.06);
+      border: 1px solid rgba(255,204,0,0.2);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 12px;
+      color: var(--warn);
+      font-family: 'Space Mono', monospace;
+    }
+    .warning-item.info {
+      background: rgba(0,229,255,0.04);
+      border-color: rgba(0,229,255,0.15);
+      color: var(--accent);
+    }
+
+    /* Progress bar */
+    .conc-bar-wrap {
+      margin-top: 16px;
+    }
+    .conc-bar-label {
+      display: flex;
+      justify-content: space-between;
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .conc-bar-track {
+      height: 8px;
+      background: var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+      position: relative;
+    }
+    .conc-bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 1s cubic-bezier(.4,0,.2,1);
+    }
+    .conc-bar-fill.low  { background: linear-gradient(90deg, var(--safe), #00b248); }
+    .conc-bar-fill.med  { background: linear-gradient(90deg, var(--warn), #e6a800); }
+    .conc-bar-fill.high { background: linear-gradient(90deg, var(--danger), #c0002f); }
+    /* threshold markers */
+    .bar-markers {
+      position: relative;
+      margin-top: 4px;
+      height: 12px;
+    }
+    .bar-marker {
+      position: absolute;
+      transform: translateX(-50%);
+      font-family: 'Space Mono', monospace;
+      font-size: 9px;
+      color: var(--muted);
+    }
+
+    /* Data note */
+    .data-note {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      color: var(--muted);
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid var(--border);
+    }
+
+    /* Footer */
+    footer {
+      margin-top: 80px;
+      text-align: center;
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 2;
+    }
+
+    @media (max-width: 560px) {
+      .input-row { flex-direction: column; }
+      .param-top { flex-direction: column; }
+      .stats-grid { grid-template-columns: 1fr 1fr; }
+      header { margin-bottom: 40px; }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <header>
+    <div class="logo-icon">🛡️</div>
+    <div class="logo-text">Crypto<span>Shield</span></div>
+    <div class="badge">Beta v0.1</div>
+  </header>
+
+  <!-- Hero -->
+  <div class="hero">
+    <h1>On-Chain Risk<br><span class="hl">Intelligence</span></h1>
+    <p>Analyse any token across all major chains. Detect concentration risk, whale manipulation, and distribution anomalies — powered entirely by free public APIs.</p>
+  </div>
+
+  <!-- Input Card -->
+  <div class="input-card">
+    <label class="input-label" for="addressInput">Token / Coin Address or Symbol</label>
+    <div class="input-row">
+      <input
+        id="addressInput"
+        type="text"
+        placeholder="0x... · So... · BTC · ETH · SOL · or any token address"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <button id="calcBtn">Calculate Risk</button>
+    </div>
+    <div class="chain-hint">
+      <span>Supports:</span>
+      <span class="chain-pill">Ethereum</span>
+      <span class="chain-pill">BSC</span>
+      <span class="chain-pill">Solana</span>
+      <span class="chain-pill">Bitcoin</span>
+      <span class="chain-pill">Polygon</span>
+      <span class="chain-pill">Arbitrum</span>
+      <span class="chain-pill">Base</span>
+      <span class="chain-pill">Avalanche</span>
+      <span class="chain-pill">+ more</span>
+    </div>
+  </div>
+
+  <!-- Status -->
+  <div id="statusMsg">
+    <div class="spinner"></div>
+    <span id="statusText">Analysing holder concentration…</span>
+  </div>
+
+  <!-- Error -->
+  <div id="errorMsg"></div>
+
+  <!-- Results -->
+  <div id="results">
+    <div class="results-header">
+      <div class="results-title">Risk Analysis</div>
+      <div class="detected-chain" id="detectedChainLabel">—</div>
+    </div>
+    <div id="paramCards"></div>
+  </div>
+
+</div>
+
+<footer>
+  CryptoShield · Data from public blockchain APIs · Not financial advice<br>
+  Built for transparency. All computations client-side.
+</footer>
+
+<script>
+  const btn        = document.getElementById('calcBtn');
+  const input      = document.getElementById('addressInput');
+  const statusMsg  = document.getElementById('statusMsg');
+  const statusText = document.getElementById('statusText');
+  const errorMsg   = document.getElementById('errorMsg');
+  const resultsEl  = document.getElementById('results');
+  const chainLabel = document.getElementById('detectedChainLabel');
+  const paramCards = document.getElementById('paramCards');
+
+  // ── Resolve the API base URL automatically ──────────────────────────────────
+  // Works for: vercel dev (localhost), deployed Vercel, or any HTTP server.
+  // Will show a clear error if opened as a file:// URL.
+  function getApiBase() {
+    if (location.protocol === 'file:') {
+      throw new Error(
+        'This app must be served over HTTP — open it via "vercel dev" locally, ' +
+        'or visit your deployed Vercel URL. Opening index.html directly as a file won\'t work.'
+      );
+    }
+    return '/api/analyze';
+  }
+
+  // ── UI helpers ───────────────────────────────────────────────────────────────
+  function showStatus(msg) {
+    statusMsg.style.display = 'flex';
+    statusText.textContent  = msg;
+    errorMsg.style.display  = 'none';
+  }
+  function hideStatus() { statusMsg.style.display = 'none'; }
+  function showError(msg) {
+    errorMsg.textContent   = '⚠ ' + msg;
+    errorMsg.style.display = 'block';
+    hideStatus();
+  }
+
+  // ── Render helpers ───────────────────────────────────────────────────────────
+  function riskClass(score) {
+    if (score >= 3) return 'high';
+    if (score === 2) return 'med';
+    return 'low';
+  }
+
+  function renderDots(score, cls) {
+    return [1,2,3].map(i =>
+      `<div class="dot ${i <= score ? 'active ' + cls : ''}"></div>`
+    ).join('');
+  }
+
+  function renderHolderCard(p, coin) {
+    const cls      = riskClass(p.score);
+    const m        = p.metrics || {};
+    const concPct  = Math.min(m.top50ConcentrationPct || 0, 100).toFixed(1);
+    const exchPct  = (m.exchangePctOfCirculating || 0).toFixed(1);
+    const burnPct  = (m.burnedPct || 0).toFixed(1);
+    const analysed = m.normalHolderCount ?? m.holderCount ?? '—';
+
+    // Warnings
+    let warnings = '';
+    if (p.exchangeRiskBump) {
+      warnings += `<div class="warning-item">⚠ Exchange wallets hold ${exchPct}% of circulating supply — elevated liquidity risk (+1 applied to score)</div>`;
+    }
+    if (p.whaleWarnings && p.whaleWarnings.length > 0) {
+      p.whaleWarnings.forEach(w => {
+        const who = w.label || (w.address ? w.address.slice(0,8)+'…'+w.address.slice(-6) : '?');
+        warnings += `<div class="warning-item">⚠ Whale: ${who} holds ${w.pct}% of circulating supply</div>`;
+      });
+    }
+
+    // Breakdown rows
+    const breakdownRows = (p.breakdown || []).map(b => `
+      <div class="stat-box">
+        <div class="stat-label">${b.label}</div>
+        <div class="stat-value ${b.risk === 'high' ? 'danger' : b.risk === 'medium' ? 'warn' : 'safe'}">${b.value}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:3px;font-family:'Space Mono',monospace">${b.description || ''}</div>
+      </div>`).join('');
+
+    return `
+    <div class="param-card risk-${cls}">
+      <div class="param-top">
+        <div>
+          <div class="param-name">Holder Concentration</div>
+          <div class="param-desc">Top 50 non-exchange wallets · circulating supply basis</div>
+        </div>
+        <div class="risk-badge ${cls}">${p.rating}</div>
+      </div>
+
+      <div class="score-row">
+        <div class="score-dots">${renderDots(p.score, cls)}</div>
+        <div class="score-label">Score ${p.score}/3</div>
+      </div>
+
+      <div class="stats-grid">${breakdownRows}</div>
+
+      <div class="conc-bar-wrap">
+        <div class="conc-bar-label">
+          <span>Top 50 Concentration (excl. exchanges)</span>
+          <span>${concPct}%</span>
+        </div>
+        <div class="conc-bar-track">
+          <div class="conc-bar-fill ${cls}" style="width:${Math.min(parseFloat(concPct),100)}%"></div>
+        </div>
+        <div class="bar-markers">
+          <span class="bar-marker" style="left:30%">30%</span>
+          <span class="bar-marker" style="left:50%">50%</span>
+        </div>
+      </div>
+
+      ${warnings ? `<div class="warnings">${warnings}</div>` : ''}
+
+      ${p.summary ? `<div class="warning-item info" style="margin-top:14px">ℹ ${p.summary}</div>` : ''}
+
+      <div class="data-note">Source: ${coin.source || 'Public blockchain APIs'} · ${analysed} holders analysed</div>
+    </div>`;
+  }
+
+  // ── Main analysis flow ───────────────────────────────────────────────────────
+  async function runAnalysis() {
+    const raw = input.value.trim();
+    if (!raw) { showError('Please enter a token address or symbol.'); return; }
+
+    btn.disabled = true;
+    resultsEl.style.display = 'none';
+    paramCards.innerHTML    = '';
+
+    try {
+      const apiBase = getApiBase();  // throws immediately if file:// protocol
+      showStatus('Resolving token & fetching holder data…');
+
+      const res = await fetch(`${apiBase}?query=${encodeURIComponent(raw)}`);
+      const json = await res.json();
+
+      if (!res.ok) {
+        throw new Error(json.error || `Server error ${res.status}`);
+      }
+
+      hideStatus();
+
+      const { coin, parameter } = json;
+      chainLabel.textContent = coin.chainLabel || coin.chain || 'Unknown chain';
+
+      // Attach metrics to parameter for the renderer
+      parameter.metrics = json.metrics;
+
+      paramCards.innerHTML = renderHolderCard(parameter, coin);
+      resultsEl.style.display = 'block';
+
+    } catch (e) {
+      showError(e.message || 'Failed to analyse token. Check the address/symbol and try again.');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  btn.addEventListener('click', runAnalysis);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') runAnalysis(); });
+</script>
+</body>
+</html>

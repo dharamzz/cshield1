@@ -763,30 +763,47 @@ async function fetchWithTimeout(url, opts = {}, ms = 7000) {
 }
 
 // CoinGecko metadata with 429 retry
-async function cgMeta(coinId) {
-  const url = `https://api.coingecko.com/api/v3/coins/${coinId}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false`;
-  try { return await fetchJSON(url); } catch (e) {
-    if (e.message?.includes("429")) {
-      await new Promise(r => setTimeout(r, 1200));
-      try { return await fetchJSON(url); } catch { return null; }
+// CoinGecko fetch — exponential backoff on 429: waits 3s → 8s → 15s (3 retries)
+async function cgFetch(url) {
+  const waits = [3000, 8000, 15000];
+  for (let i = 0; i <= waits.length; i++) {
+    try {
+      const r = await fetch(url, { headers: { Accept: "application/json" } });
+      if (r.status === 429) {
+        if (i === waits.length) throw new Error(
+          `CoinGecko rate limit (HTTP 429). Wait 60 seconds and retry, ` +
+          `or paste the contract address directly (0x…) to skip CoinGecko entirely.`
+        );
+        console.warn(`[CoinGecko] 429 rate-limited — waiting ${waits[i]/1000}s (retry ${i+1}/${waits.length})`);
+        await new Promise(r => setTimeout(r, waits[i]));
+        continue;
+      }
+      if (!r.ok) throw new Error(`HTTP ${r.status} from ${new URL(url).hostname}`);
+      return r.json();
+    } catch(e) {
+      if (e.message?.includes("429") && i < waits.length) continue;
+      throw e;
     }
-    return null;
   }
 }
 
-// CoinGecko search+detail with 429 retry
+// Metadata fetch — non-fatal, used only for price/image enrichment
+async function cgMeta(coinId) {
+  try {
+    return await cgFetch(
+      `https://api.coingecko.com/api/v3/coins/${coinId}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false`
+    );
+  } catch { return null; }
+}
+
+// Search + coin detail — only called for coins NOT in coinmap
 async function cgSearchDetail(query) {
-  const retry = async (url) => {
-    try { return await fetchJSON(url); } catch (e) {
-      if (e.message?.includes("429")) { await new Promise(r => setTimeout(r, 1200)); return fetchJSON(url); }
-      throw e;
-    }
-  };
-  const search = await retry(`https://api.coingecko.com/api/v3/search?query=${encodeURIComponent(query)}`);
+  const search = await cgFetch(`https://api.coingecko.com/api/v3/search?query=${encodeURIComponent(query)}`);
   const hit    = search.coins?.[0];
-  if (!hit) throw new Error(`"${query}" not found on CoinGecko. Try the contract address directly.`);
-  const detail = await retry(`https://api.coingecko.com/api/v3/coins/${hit.id}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false`);
-  return detail;
+  if (!hit) throw new Error(`"${query}" not found. Try the contract address directly (0x…).`);
+  return cgFetch(
+    `https://api.coingecko.com/api/v3/coins/${hit.id}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false`
+  );
 }
 
 // Standard result builder

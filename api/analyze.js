@@ -1307,9 +1307,22 @@ async function resolveByName(query) {
     marketCap: detail.market_data?.market_cap?.usd    || null,
   };
 
+  // Block non-EVM platforms explicitly — even if CoinGecko finds them
+  const NON_EVM_PLATFORMS = ["solana","tron","cardano","polkadot","cosmos","near","aptos","sui",
+    "xrp-ledger","dogecoin","litecoin","stellar","algorand","the-open-network","hedera-hashgraph",
+    "binance-smart-chain"]; // BNB chain excluded until supported
+  const nonEvmHit = NON_EVM_PLATFORMS.find(p => platforms[p]);
+  if (nonEvmHit) {
+    throw new Error(
+      `Currently only Bitcoin and EVM-based coins are supported. ` +
+      `"${detail.name}" (${detail.symbol?.toUpperCase()}) is on ${nonEvmHit}. ` +
+      `Support for other chains will be added shortly.`
+    );
+  }
+
   // EVM chains — supported
   const CG_TO_CHAIN = {
-    "ethereum":"eth","binance-smart-chain":"bsc","polygon-pos":"polygon",
+    "ethereum":"eth","polygon-pos":"polygon",
     "arbitrum-one":"arbitrum","base":"base","optimistic-ethereum":"optimism",
     "avalanche":"avalanche","fantom":"fantom","cronos":"cronos","linea":"linea",
     "zksync":"zksync","mantle":"mantle","blast":"blast","scroll":"scroll",

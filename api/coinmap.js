@@ -244,7 +244,7 @@ export const COINS = [
   { aliases:["polis","star atlas polis"],         cgId:"star-atlas-polis", type:"NON-EVM",  contract:null, chain:null },
 
   // ── AI / Compute tokens ──────────────────────────────────────────────────
-  { aliases:["render","rndr","render token"],     cgId:"render-token", type:"EVM",      contract:"0x6de037ef9ad2725eb40118bb1702ebb27e4aeb24", chain:"eth" },
+  { aliases:["render","rndr","render token"],     cgId:"render-token", type:"NON-EVM",  contract:null, chain:null },
   { aliases:["wld","worldcoin"],                  cgId:"worldcoin-wld", type:"EVM",     contract:"0x163f8c2467924be0ae7b5347228cabf260318753", chain:"eth" },
   { aliases:["tao","bittensor"],                  cgId:"bittensor", type:"NON-EVM",         contract:null, chain:null },
   { aliases:["gensyn"],                           cgId:"gensyn", type:"NON-EVM",            contract:null, chain:null },
@@ -261,7 +261,7 @@ export const COINS = [
   // ── Meme coins ──────────────────────────────────────────────────────────
   { aliases:["shib","shiba inu"],                 cgId:"shiba-inu", type:"EVM",         contract:"0x95ad61b0a150d79219dcf64e1e6cc01f0b64c4ce", chain:"eth" },
   { aliases:["pepe"],                             cgId:"pepe", type:"EVM",              contract:"0x6982508145454ce325ddbe47a25d4ec3d2311933", chain:"eth" },
-  { aliases:["floki"],                            cgId:"floki", type:"EVM",             contract:"0xcf0c122c6b73ff809c693db761e7baebe62b6a2e", chain:"eth" },
+  { aliases:["floki"],                            cgId:"floki", type:"NON-EVM",         contract:null, chain:null },
   { aliases:["bone","bone shibaswap"],            cgId:"bone-shibaswap", type:"EVM",    contract:"0x9813037ee2218799597d83d4a5b6f3b6778218d9", chain:"eth" },
   { aliases:["leash","doge killer"],              cgId:"doge-killer", type:"EVM",       contract:"0x27c70cd1946795b66be9d954418546998b546634", chain:"eth" },
   { aliases:["elon","dogelon mars"],              cgId:"dogelon-mars", type:"EVM",      contract:"0x761d38e5ddf6ccf6cf7c55759d5210750b5d60f3", chain:"eth" },
@@ -289,7 +289,7 @@ export const COINS = [
   // ══════════════════════════════════════════════════════════════════════════
   { aliases:["cake","pancakeswap"],               cgId:"pancakeswap-token", type:"EVM", contract:"0x0e09fabb73bd3ade0a17ecc321fd13a19e81ce82", chain:"bsc" },
   { aliases:["xvs","venus"],                      cgId:"venus", type:"EVM",             contract:"0xcf6bb5389c92bdda8a3747ddb454cb7a64626c63", chain:"bsc" },
-  { aliases:["bake","bakeryswap"],                cgId:"bakerytoken", type:"EVM",       contract:"0xe02df9e3e622debdd69fb838bb799e3f168902c5", chain:"bsc" },
+  { aliases:["bake","bakeryswap"],                cgId:"bakerytoken", type:"NON-EVM",   contract:null, chain:null },
   { aliases:["alpaca","alpaca finance"],          cgId:"alpaca-finance", type:"EVM",    contract:"0x8f0528ce5ef7b51152a59745befdd91d97091d2f", chain:"bsc" },
   { aliases:["the","the tokenized equity"],       cgId:"the-tokenized-equity", type:"EVM", contract:"0xf4c8e32eadec4bfe97e0f595add0f4450a863a5", chain:"bsc" },
   { aliases:["raca","radio caca"],                cgId:"radio-caca", type:"EVM",        contract:"0x12bb890508c125661e03b09ec06e404bc9289040", chain:"bsc" },
@@ -424,6 +424,26 @@ export const COINS = [
   { aliases:["atom2","cosmos2"],                  cgId:"cosmos", type:"NON-EVM",            contract:null, chain:null },
   { aliases:["strd","stride"],                    cgId:"stride", type:"NON-EVM",            contract:null, chain:null },
   { aliases:["rowan","sifchain"],                 cgId:"sifchain", type:"NON-EVM",          contract:null, chain:null },
+
+  // ── Solana tokens — NON-EVM (unsupported) ───────────────────────────────
+  { aliases:["bonk"],                               cgId:"bonk",              type:"NON-EVM", contract:null, chain:null },
+  { aliases:["wif","dogwifhat"],                    cgId:"dogwifcoin",        type:"NON-EVM", contract:null, chain:null },
+  { aliases:["jup","jupiter"],                      cgId:"jupiter-exchange-solana", type:"NON-EVM", contract:null, chain:null },
+  { aliases:["pyth"],                               cgId:"pyth-network",      type:"NON-EVM", contract:null, chain:null },
+  { aliases:["nos","nosana"],                       cgId:"nosana",            type:"NON-EVM", contract:null, chain:null },
+  { aliases:["cloud","cloudmos"],                   cgId:"cloudmos",          type:"NON-EVM", contract:null, chain:null },
+  { aliases:["ray","raydium"],                      cgId:"raydium",           type:"NON-EVM", contract:null, chain:null },
+  { aliases:["orca"],                               cgId:"orca",              type:"NON-EVM", contract:null, chain:null },
+  { aliases:["mngo","mango markets"],               cgId:"mango-markets",     type:"NON-EVM", contract:null, chain:null },
+  { aliases:["samo","samoyedcoin"],                 cgId:"samoyedcoin",       type:"NON-EVM", contract:null, chain:null },
+  { aliases:["popcat"],                             cgId:"popcat",            type:"NON-EVM", contract:null, chain:null },
+  { aliases:["fida","bonfida"],                     cgId:"bonfida",           type:"NON-EVM", contract:null, chain:null },
+
+  // ── BNB Chain tokens — NON-EVM (unsupported) ────────────────────────────
+  { aliases:["twt","trust wallet token"],           cgId:"trust-wallet-token",type:"NON-EVM", contract:null, chain:null },
+  { aliases:["bsw","biswap"],                       cgId:"biswap",            type:"NON-EVM", contract:null, chain:null },
+  { aliases:["nuls"],                               cgId:"nuls",              type:"NON-EVM", contract:null, chain:null },
+
 
 ];
 

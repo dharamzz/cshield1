@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>CryptoRisk — Results</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  --bg:#080b12;--surface:#0f1420;--surface2:#161d2e;
+  --border:rgba(255,255,255,0.06);--border2:rgba(255,255,255,0.12);
+  --text:#eef0f8;--muted:#5a6380;--dim:#2a3048;
+  --accent:#00e5ff;
+  --mono:'DM Mono',monospace;
+  --score-color:#00e5ff;
+}
+
+html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;z-index:0;
+  background:radial-gradient(ellipse 800px 500px at 70% 10%,rgba(0,229,255,0.04),transparent 60%)}
+body::after{content:'';position:fixed;inset:0;z-index:0;
+  background-image:linear-gradient(rgba(0,229,255,0.02) 1px,transparent 1px),
+                   linear-gradient(90deg,rgba(0,229,255,0.02) 1px,transparent 1px);
+  background-size:80px 80px}
+
+nav{position:sticky;top:0;z-index:10;display:flex;align-items:center;justify-content:space-between;
+  padding:1.1rem 2.5rem;background:rgba(8,11,18,0.88);backdrop-filter:blur(16px);
+  border-bottom:1px solid var(--border)}
+.logo{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.12em;text-decoration:none;color:var(--text)}
+.logo b{color:var(--accent)}
+.back{font-family:var(--mono);font-size:11px;color:var(--muted);text-decoration:none;
+  border:1px solid var(--border2);border-radius:3px;padding:6px 14px;transition:color .15s,border-color .15s}
+.back:hover{color:var(--text);border-color:rgba(0,229,255,0.3)}
+
+.page{position:relative;z-index:1;max-width:860px;margin:0 auto;padding:2.5rem 1.5rem 5rem}
+
+/* ── states ── */
+.state{display:none;flex-direction:column;align-items:center;justify-content:center;min-height:55vh;gap:1rem;text-align:center}
+.state.active{display:flex}
+.spinner{width:40px;height:40px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.state-msg{font-family:var(--mono);font-size:13px;color:var(--muted)}
+.err-title{font-family:'Bebas Neue',sans-serif;font-size:36px;color:#ff6060;letter-spacing:.06em}
+.err-detail{font-family:var(--mono);font-size:12px;color:var(--muted);max-width:460px;line-height:1.7}
+.err-hint{background:var(--surface);border:1px solid var(--border2);border-radius:6px;
+  padding:14px 18px;font-family:var(--mono);font-size:11px;color:var(--muted);
+  max-width:460px;line-height:1.8;text-align:left}
+.btn-back{display:inline-block;margin-top:.5rem;background:var(--accent);color:#080b12;
+  font-weight:600;font-size:13px;border:none;border-radius:5px;padding:10px 26px;cursor:pointer;text-decoration:none}
+
+/* ── RESULTS ── */
+.results{display:none}
+.results.active{display:block}
+
+/* coin header */
+.coin-hdr{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;
+  gap:1rem;margin-bottom:2rem;padding-bottom:1.5rem;border-bottom:1px solid var(--border)}
+.coin-left{display:flex;align-items:center;gap:14px}
+.coin-icon{width:50px;height:50px;border-radius:50%;background:var(--surface2);
+  border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;
+  font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--accent);overflow:hidden;flex-shrink:0}
+.coin-icon img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+.coin-name{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:.06em}
+.coin-ticker{font-family:var(--mono);font-size:12px;color:var(--muted);margin-top:1px}
+.coin-addr{font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:3px;
+  word-break:break-all;max-width:260px}
+.coin-addr-row{display:flex;align-items:center;gap:6px;margin-top:3px}
+.copy-btn{background:none;border:1px solid var(--border);border-radius:3px;
+  color:var(--muted);font-family:var(--mono);font-size:9px;padding:2px 7px;
+  cursor:pointer;transition:all .15s;white-space:nowrap;flex-shrink:0}
+.copy-btn:hover{border-color:var(--accent);color:var(--accent)}
+.copy-btn.copied{border-color:#4dffb0;color:#4dffb0}
+.addr-copy-btn{background:none;border:none;padding:0 3px;cursor:pointer;
+  color:var(--dim);font-size:10px;transition:color .15s;line-height:1}
+.addr-copy-btn:hover{color:var(--accent)}
+.addr-copy-btn.copied{color:#4dffb0}
+.coin-meta{display:flex;gap:1.5rem;flex-wrap:wrap}
+.meta-item{text-align:right}
+.meta-lbl{font-family:var(--mono);font-size:9px;color:var(--dim);letter-spacing:.1em;text-transform:uppercase}
+.meta-val{font-size:15px;font-weight:600;margin-top:2px}
+
+/* ── SCORE SECTION ── */
+.score-section{
+  display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:1.5rem;
+  align-items:stretch;
+}
+
+/* dial card */
+.dial-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:10px;
+  padding:2rem 1.5rem;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1rem;
+}
+.dial-wrap{position:relative;width:180px;height:180px}
+.dial-svg{width:100%;height:100%}
+/* Score number overlay */
+.dial-center{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  text-align:center;pointer-events:none;margin-top:10px;
+}
+.dial-score{font-family:'Bebas Neue',sans-serif;font-size:52px;letter-spacing:.02em;line-height:1;color:var(--score-color)}
+.dial-denom{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.dial-rating{
+  font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:.08em;
+  color:var(--score-color);text-align:center;
+}
+.dial-summary{font-size:13px;color:var(--muted);text-align:center;line-height:1.6;max-width:220px}
+
+/* breakdown card */
+.breakdown-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:10px;
+  padding:1.5rem;display:flex;flex-direction:column;gap:0;
+}
+.bd-title{font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:.1em;
+  text-transform:uppercase;margin-bottom:1.1rem}
+.bd-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,0.03)}
+.bd-row:last-child{border-bottom:none}
+.bd-label{font-size:13px;color:var(--muted);flex:1}
+.bd-val{font-family:var(--mono);font-size:13px;font-weight:500;color:var(--text);min-width:52px;text-align:right}
+.bd-bar{width:80px;height:5px;background:var(--dim);border-radius:3px;overflow:hidden;flex-shrink:0}
+.bd-bar-fill{height:100%;border-radius:3px;transition:width .8s ease}
+.risk-low .bd-bar-fill{background:#4dffb0}
+.risk-medium .bd-bar-fill{background:#ffd447}
+.risk-high .bd-bar-fill{background:#ff6b35}
+.bd-pill{
+  font-family:var(--mono);font-size:9px;padding:2px 8px;border-radius:2px;
+  border:1px solid;flex-shrink:0;min-width:50px;text-align:center;
+}
+.pill-low{color:#4dffb0;border-color:rgba(77,255,176,0.3);background:rgba(77,255,176,0.07)}
+.pill-medium{color:#ffd447;border-color:rgba(255,212,71,0.3);background:rgba(255,212,71,0.07)}
+.pill-high{color:#ff6b35;border-color:rgba(255,107,53,0.3);background:rgba(255,107,53,0.08)}
+
+/* ── PARAMETER PROGRESS STRIP ── */
+.param-strip{
+  display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:1.5rem;
+}
+.ps-card{background:var(--surface);border:1px solid var(--border);border-radius:6px;
+  padding:12px;position:relative;overflow:hidden}
+.ps-card.ps-live{border-color:rgba(0,229,255,0.2)}
+.ps-card.ps-live::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--accent)}
+.ps-num{font-family:var(--mono);font-size:9px;color:var(--dim);margin-bottom:5px}
+.ps-card.ps-live .ps-num{color:var(--accent)}
+.ps-name{font-size:11px;font-weight:500;color:var(--muted);line-height:1.3}
+.ps-card.ps-live .ps-name{color:var(--text)}
+.ps-score{
+  margin-top:8px;font-family:'Bebas Neue',sans-serif;font-size:22px;
+  letter-spacing:.05em;line-height:1;
+}
+.ps-soon{font-family:var(--mono);font-size:9px;color:var(--dim);margin-top:6px}
+
+/* ── HOLDERS TABLE ── */
+.holders-section{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:10px;padding:1.5rem;margin-bottom:1.5rem;
+}
+.section-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem}
+.section-title{font-family:var(--mono);font-size:10px;color:var(--dim);
+  letter-spacing:.1em;text-transform:uppercase}
+.section-src{font-family:var(--mono);font-size:10px;color:var(--dim);
+  border:1px solid var(--border);border-radius:3px;padding:3px 8px}
+.tab-row{display:flex;gap:6px}
+.tab-btn{font-family:var(--mono);font-size:10px;color:var(--dim);background:none;
+  border:1px solid var(--border);border-radius:3px;padding:4px 10px;cursor:pointer;transition:all .15s}
+.tab-btn.on{color:var(--accent);border-color:rgba(0,229,255,0.3);background:rgba(0,229,255,0.06)}
+
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{font-family:var(--mono);font-size:9px;color:var(--dim);letter-spacing:.1em;
+  text-transform:uppercase;text-align:left;padding:0 8px 10px 0;border-bottom:1px solid var(--border)}
+td{padding:9px 8px 9px 0;border-bottom:1px solid rgba(255,255,255,0.025);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,0.015)}
+.td-rank{font-family:var(--mono);font-size:10px;color:var(--dim);width:28px}
+.td-addr{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.td-tag{display:inline-block;font-family:var(--mono);font-size:9px;padding:2px 7px;
+  border-radius:2px;border:1px solid}
+.tag-exchange{color:#4dffb0;border-color:rgba(77,255,176,0.25);background:rgba(77,255,176,0.06)}
+.tag-contract{color:#7eb8ff;border-color:rgba(126,184,255,0.25);background:rgba(126,184,255,0.06)}
+.tag-whale{color:#ff8c42;border-color:rgba(255,140,66,0.25);background:rgba(255,140,66,0.06)}
+.tag-burned{color:var(--muted);border-color:var(--border);background:var(--surface2)}
+.td-pct{font-family:var(--mono);font-size:12px;font-weight:500;text-align:right;white-space:nowrap}
+.mini-track{width:80px;height:4px;background:var(--dim);border-radius:2px;overflow:hidden}
+.mini-fill{height:100%;border-radius:2px}
+
+/* ── DATA NOTE ── */
+.data-note{
+  font-family:var(--mono);font-size:11px;color:var(--dim);
+  border:1px solid var(--border);border-radius:6px;padding:12px 16px;line-height:1.8;
+}
+
+/* ── ANIMATIONS ── */
+.results.active>*{animation:rise .4s ease both}
+.results.active>*:nth-child(1){animation-delay:.05s}
+.results.active>*:nth-child(2){animation-delay:.1s}
+.results.active>*:nth-child(3){animation-delay:.15s}
+.results.active>*:nth-child(4){animation-delay:.2s}
+.results.active>*:nth-child(5){animation-delay:.25s}
+.results.active>*:nth-child(6){animation-delay:.3s}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+@media(max-width:640px){
+  nav{padding:1rem 1.25rem}
+  .score-section,.param-strip{grid-template-columns:1fr}
+  .coin-hdr{flex-direction:column;align-items:flex-start}
+  .coin-meta{justify-content:flex-start}
+  .meta-item{text-align:left}
+}
+</style>
+</head>
+<body>
+<nav>
+  <a class="logo" href="index.html">Crypto<b>Risk</b></a>
+  <a class="back" href="index.html">← New search</a>
+</nav>
+
+<main class="page">
+
+  <!-- Loading -->
+  <div class="state active" id="stLoad">
+    <div class="spinner"></div>
+    <p class="state-msg" id="loadMsg">Fetching on-chain data…</p>
+  </div>
+
+  <!-- Error -->
+  <div class="state" id="stErr">
+    <div class="err-title">Analysis failed</div>
+    <p class="err-detail" id="errDetail"></p>
+    <div class="err-hint" id="errHint" style="display:none"></div>
+    <a class="btn-back" href="index.html">← Try another coin</a>
+  </div>
+
+  <!-- Results -->
+  <div class="results" id="results">
+
+    <!-- Coin header -->
+    <div class="coin-hdr">
+      <div class="coin-left">
+        <div class="coin-icon" id="coinIcon"></div>
+        <div>
+          <div class="coin-name" id="coinName"></div>
+          <div class="coin-ticker" id="coinTicker"></div>
+          <div class="coin-addr" id="coinAddr"></div>
+        </div>
+      </div>
+      <div class="coin-meta" id="coinMeta"></div>
+    </div>
+
+    <!-- Score + Breakdown -->
+    <div class="score-section">
+      <!-- Dial -->
+      <div class="dial-card">
+        <div class="dial-wrap">
+          <svg class="dial-svg" viewBox="0 0 180 180" id="dialSvg">
+            <!-- background arc -->
+            <path id="dialBg"  fill="none" stroke="#1a2030" stroke-width="14" stroke-linecap="round"/>
+            <!-- score arc -->
+            <path id="dialArc" fill="none" stroke="#00e5ff" stroke-width="14" stroke-linecap="round"/>
+            <!-- tick marks -->
+            <g id="ticks"></g>
+          </svg>
+          <div class="dial-center">
+            <div class="dial-score" id="dialScore">—</div>
+            <div class="dial-denom">/10</div>
+          </div>
+        </div>
+        <div class="dial-rating" id="dialRating">—</div>
+        <div class="dial-summary" id="dialSummary"></div>
+      </div>
+
+      <!-- Breakdown -->
+      <div class="breakdown-card">
+        <div class="bd-title">Sub-metric breakdown</div>
+        <div id="bdRows"></div>
+      </div>
+    </div>
+
+    <!-- 5-param strip -->
+    <div class="param-strip" id="paramStrip"></div>
+
+    <!-- Holders table -->
+    <div class="holders-section">
+      <div class="section-hdr">
+        <div class="section-title">Holder breakdown</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <div class="tab-row">
+            <button class="tab-btn on" onclick="showHolders(10,this)">Top 10</button>
+            <button class="tab-btn" onclick="showHolders(20,this)">Top 20</button>
+          </div>
+          <div class="section-src" id="dataSrc"></div>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>#</th><th>Address / Label</th><th>Type</th>
+            <th style="text-align:right">%</th><th style="width:90px"></th>
+          </tr>
+        </thead>
+        <tbody id="holderBody"></tbody>
+      </table>
+    </div>
+
+    <!-- Note -->
+    <div class="data-note" id="dataNote"></div>
+  </div>
+
+</main>
+
+<script>
+// ── colour config ──────────────────────────────────────────────
+const SCORE_COLORS = {
+  arc:  ['#4dffb0','#4dffb0','#a8ff78','#d4ff47','#ffd447','#ffb347','#ff8c42','#ff6b35','#ff4444','#ff2244'],
+  text: ['#4dffb0','#4dffb0','#a8ff78','#d4ff47','#ffd447','#ffb347','#ff8c42','#ff6b35','#ff4444','#ff2244'],
+};
+function scoreColor(s){ return SCORE_COLORS.arc[Math.min(10,Math.max(1,Math.round(s)))-1] }
+
+// ── dial drawing ───────────────────────────────────────────────
+function drawDial(score){
+  const cx=90,cy=90,r=72;
+  const startA=-210, totalArc=240; // degrees
+
+  function polarXY(deg, radius){
+    const rad=(deg-90)*Math.PI/180;
+    return [cx+radius*Math.cos(rad), cy+radius*Math.sin(rad)];
+  }
+
+  function arcPath(startDeg,endDeg,radius){
+    const [x1,y1]=polarXY(startDeg,radius);
+    const [x2,y2]=polarXY(endDeg,radius);
+    const large=Math.abs(endDeg-startDeg)>180?1:0;
+    return `M ${x1} ${y1} A ${radius} ${radius} 0 ${large} 1 ${x2} ${y2}`;
+  }
+
+  // background track
+  document.getElementById('dialBg').setAttribute('d', arcPath(startA, startA+totalArc, r));
+
+  // score arc
+  const pct = Math.min(10,Math.max(0,score))/10;
+  const endAng = startA + totalArc*pct;
+  const col = scoreColor(score);
+  const arcEl = document.getElementById('dialArc');
+  arcEl.setAttribute('d', arcPath(startA, endAng, r));
+  arcEl.setAttribute('stroke', col);
+
+  // tick marks at 1–10
+  const tickG = document.getElementById('ticks');
+  tickG.innerHTML='';
+  for(let i=1;i<=10;i++){
+    const ang = startA + totalArc*(i/10);
+    const [ox,oy]=polarXY(ang,r);
+    const [ix,iy]=polarXY(ang,r-10);
+    const line=document.createElementNS('http://www.w3.org/2000/svg','line');
+    line.setAttribute('x1',ox);line.setAttribute('y1',oy);
+    line.setAttribute('x2',ix);line.setAttribute('y2',iy);
+    line.setAttribute('stroke',i<=Math.round(score)?col:'#1a2030');
+    line.setAttribute('stroke-width','2');line.setAttribute('stroke-linecap','round');
+    tickG.appendChild(line);
+  }
+
+  // number + colour
+  const scoreEl = document.getElementById('dialScore');
+  scoreEl.textContent = score.toFixed(1);
+  scoreEl.style.color = col;
+  document.getElementById('dialRating').style.color = col;
+  document.documentElement.style.setProperty('--score-color', col);
+}
+
+// ── helpers ────────────────────────────────────────────────────
+function copyText(text, btn){
+  navigator.clipboard.writeText(text).then(()=>{
+    const orig=btn.textContent;
+    btn.textContent=btn.classList.contains('copy-btn')?'Copied!':'✓';
+    btn.classList.add('copied');
+    setTimeout(()=>{ btn.textContent=orig; btn.classList.remove('copied'); }, 1800);
+  }).catch(()=>{
+    // fallback for older browsers
+    const ta=document.createElement('textarea');
+    ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    const orig=btn.textContent;
+    btn.textContent=btn.classList.contains('copy-btn')?'Copied!':'✓';
+    btn.classList.add('copied');
+    setTimeout(()=>{ btn.textContent=orig; btn.classList.remove('copied'); }, 1800);
+  });
+}
+
+function short(addr){
+  if(!addr)return '—';
+  if(addr.startsWith('0x')&&addr.length>12) return addr.slice(0,10)+'…'+addr.slice(-6);
+  if(addr.length>20) return addr.slice(0,10)+'…'+addr.slice(-6);
+  return addr;
+}
+
+function guessTag(h){
+  const e=(h.entity||'').toLowerCase(), l=(h.label||'').toLowerCase();
+  if(['exchange'].includes(e)||['binance','coinbase','kraken','okx','bitfinex','robinhood','gemini','ftx','bybit'].some(x=>l.includes(x))) return 'exchange';
+  if(h.isContract||['contract','bridge','pool','router','protocol'].some(x=>e.includes(x)||l.includes(x))) return 'contract';
+  if(l.includes('burn')||l.includes('dead')) return 'burned';
+  if(h.percentage>=5) return 'whale';
+  return null;
+}
+
+function barColor(risk){
+  return {low:'#4dffb0',medium:'#ffd447',high:'#ff6b35'}[risk]||'#4dffb0';
+}
+
+// ── state helpers ──────────────────────────────────────────────
+function show(id){
+  ['stLoad','stErr','results'].forEach(s=>{
+    const el=document.getElementById(s);
+    el.classList.remove('active');
+    el.style.display='none';
+  });
+  const target=document.getElementById(id);
+  target.style.display = id==='results'?'block':'flex';
+  setTimeout(()=>target.classList.add('active'),10);
+}
+
+// ── load msgs ──────────────────────────────────────────────────
+const msgs=['Fetching on-chain data…','Querying holder database…','Computing concentration metrics…','Building risk profile…'];
+let mi=0;
+const lt=setInterval(()=>{ mi=(mi+1)%msgs.length; document.getElementById('loadMsg').textContent=msgs[mi]; },1300);
+
+// ── global state ───────────────────────────────────────────────
+let gHolders=[];
+
+// ── ENTRY ─────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded',async()=>{
+  const q=new URLSearchParams(location.search).get('q');
+  if(!q){show('stErr');document.getElementById('errDetail').textContent='No coin specified.';return;}
+  document.title=`CryptoRisk — ${q}`;
+
+  try{
+    const resp=await fetch(`/api/analyze?query=${encodeURIComponent(q)}`);
+    const data=await resp.json();
+    clearInterval(lt);
+    if(!resp.ok||data.error){showError(data.error,q);return;}
+    gHolders=data.holders||[];
+    render(data);
+  }catch(e){
+    clearInterval(lt);
+    showError('Network error — is the app running via Vercel (vercel dev)? Opening index.html directly won\'t work for the API.',q);
+  }
+});
+
+function showError(msg,q){
+  show('stErr');
+  document.getElementById('errDetail').textContent=msg||'Unknown error.';
+  if(q&&!q.startsWith('0x')){
+    const h=document.getElementById('errHint');
+    h.style.display='block';
+    h.innerHTML=
+      'Works without any API key: BTC · ETH · BNB · SOL · PEPE<br>'+
+      'For any ERC-20 token: paste contract address (0x...)<br>'+
+      'For Solana SPL tokens: add HELIUS_API_KEY (free at helius.dev)<br>'+
+      'For higher Ethplorer limits: add ETHPLORER_API_KEY (free at ethplorer.io/wallet)';
+  }
+}
+
+// ── RENDER ────────────────────────────────────────────────────
+function render(data){
+  const {coin,metrics,parameter,holders,upcoming}=data;
+  const score=parameter.score;
+
+  // Coin header
+  const icon=document.getElementById('coinIcon');
+  if(coin.image){icon.innerHTML=`<img src="${coin.image}" alt="${coin.ticker}"/>`}
+  else{icon.textContent=(coin.ticker||'?').slice(0,2)}
+  document.getElementById('coinName').textContent=coin.name;
+  document.getElementById('coinTicker').textContent=`${coin.ticker} · ${coin.chainLabel||coin.chain||''}`;
+  const addrEl=document.getElementById('coinAddr');
+  if(coin.address){
+    addrEl.innerHTML=`<div class="coin-addr-row">
+      <span>${short(coin.address)}</span>
+      <button class="copy-btn" onclick="copyText('${coin.address}',this)" title="Copy full address">Copy</button>
+    </div>`;
+  } else {
+    addrEl.textContent='';
+  }
+
+  const meta=document.getElementById('coinMeta');
+  meta.innerHTML=[
+    coin.price?`<div class="meta-item"><div class="meta-lbl">Price</div><div class="meta-val">$${coin.price.toLocaleString(undefined,{maximumFractionDigits:6})}</div></div>`:'',
+    coin.marketCap?`<div class="meta-item"><div class="meta-lbl">Market Cap</div><div class="meta-val">$${(coin.marketCap/1e9).toFixed(2)}B</div></div>`:'',
+  ].join('');
+
+  // Dial
+  drawDial(score);
+  document.getElementById('dialRating').textContent=parameter.rating;
+  document.getElementById('dialSummary').textContent=parameter.summary;
+
+  // Breakdown rows
+  const bdEl=document.getElementById('bdRows');
+  bdEl.innerHTML=parameter.breakdown.map(b=>{
+    const maxPct=100;
+    const fillW=Math.min(100,parseFloat(b.value)*2); // scale bar reasonably
+    return `<div class="bd-row risk-${b.risk}">
+      <div class="bd-label">${b.label}</div>
+      <div class="bd-val">${b.value}</div>
+      <div class="bd-bar"><div class="bd-bar-fill" style="width:${fillW}%"></div></div>
+      <div class="bd-pill pill-${b.risk}">${b.risk.toUpperCase()}</div>
+    </div>`;
+  }).join('');
+
+  // Param strip
+  const strip=document.getElementById('paramStrip');
+  const col=scoreColor(score);
+  const allParams=[{id:1,name:'Holder Concentration',score},{...upcoming[0]},{...upcoming[1]},{...upcoming[2]},{...upcoming[3]}];
+  strip.innerHTML=allParams.map(p=>`
+    <div class="ps-card ${p.score!==null?'ps-live':''}">
+      <div class="ps-num">0${p.id}</div>
+      <div class="ps-name">${p.name}</div>
+      ${p.score!==null
+        ? `<div class="ps-score" style="color:${col}">${p.score}</div>`
+        : `<div class="ps-soon">Coming soon</div>`}
+    </div>
+  `).join('');
+
+  // Holders
+  document.getElementById('dataSrc').textContent=coin.source||'';
+  renderHolders(holders,10);
+
+  // Data note
+  document.getElementById('dataNote').innerHTML=
+    coin.source?.includes('Curated')
+      ? '⚠ Holder data is curated/estimated. For live ERC-20 data, enter a contract address (0x…). '
+      + 'For Solana tokens, add a free <strong>HELIUS_API_KEY</strong> from helius.dev to Vercel env vars.'
+      : `✓ Live data · Source: ${coin.source} · ${holders.length} wallets analysed`;
+
+  show('results');
+}
+
+function renderHolders(holders,n){
+  const max=holders[0]?.percentage||1;
+  document.getElementById('holderBody').innerHTML=holders.slice(0,n).map((h,i)=>{
+    const tag=guessTag(h);
+    const tagHtml=tag?`<span class="td-tag tag-${tag}">${tag}</span>`:
+      (h.label?`<span style="font-size:11px;color:var(--muted)">${h.label}</span>`:
+      '<span style="font-size:10px;color:var(--dim)">unknown</span>');
+    const fillW=((h.percentage/max)*100).toFixed(1);
+    const riskC=h.percentage>=10?'#ff6b35':h.percentage>=3?'#ffd447':'#4dffb0';
+    return `<tr>
+      <td class="td-rank">${i+1}</td>
+      <td class="td-addr">${h.label&&h.label.length<30?`<strong style="color:var(--text)">${h.label}</strong><br>`:''}<span>${short(h.address)}</span><button class="addr-copy-btn" onclick="copyText('${h.address}',this)" title="Copy address">⎘</button></td>
+      <td>${tagHtml}</td>
+      <td class="td-pct" style="color:${riskC}">${h.percentage.toFixed(2)}%</td>
+      <td><div class="mini-track"><div class="mini-fill" style="width:${fillW}%;background:${riskC}"></div></div></td>
+    </tr>`;
+  }).join('');
+}
+
+function showHolders(n,btn){
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  renderHolders(gHolders,n);
+}
+</script>
+</body>
+</html>

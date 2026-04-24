@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>CryptoRisk — Know Before You Invest</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  --bg:#080b12;
+  --surface:#0f1420;
+  --surface2:#161d2e;
+  --border:rgba(255,255,255,0.06);
+  --border2:rgba(255,255,255,0.12);
+  --text:#eef0f8;
+  --muted:#5a6380;
+  --dim:#2a3048;
+  --accent:#00e5ff;
+  --accent-glow:rgba(0,229,255,0.15);
+  --mono:'DM Mono',monospace;
+}
+
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;overflow-x:hidden}
+
+/* animated background */
+body::before{
+  content:'';position:fixed;inset:0;z-index:0;
+  background:
+    radial-gradient(ellipse 800px 500px at 20% 50%,rgba(0,229,255,0.04) 0%,transparent 60%),
+    radial-gradient(ellipse 600px 400px at 80% 20%,rgba(120,80,255,0.04) 0%,transparent 60%);
+}
+
+/* grid lines */
+body::after{
+  content:'';position:fixed;inset:0;z-index:0;
+  background-image:linear-gradient(rgba(0,229,255,0.025) 1px,transparent 1px),
+                   linear-gradient(90deg,rgba(0,229,255,0.025) 1px,transparent 1px);
+  background-size:80px 80px;
+}
+
+nav{
+  position:fixed;top:0;left:0;right:0;z-index:10;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:1.1rem 2.5rem;
+  background:rgba(8,11,18,0.8);
+  backdrop-filter:blur(16px);
+  border-bottom:1px solid var(--border);
+}
+.logo{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:0.12em;color:var(--text)}
+.logo b{color:var(--accent)}
+.nav-tag{font-family:var(--mono);font-size:10px;color:var(--muted);border:1px solid var(--border2);border-radius:3px;padding:4px 10px;letter-spacing:0.08em}
+
+.page{
+  position:relative;z-index:1;
+  min-height:100vh;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  padding:6rem 1.5rem 3rem;
+}
+
+.eyebrow{
+  display:inline-flex;align-items:center;gap:8px;
+  font-family:var(--mono);font-size:11px;letter-spacing:0.12em;
+  color:var(--accent);text-transform:uppercase;
+  border:1px solid rgba(0,229,255,0.2);border-radius:2px;
+  padding:5px 16px;margin-bottom:2rem;
+  animation:rise .6s ease both;
+}
+.eyebrow::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--accent);animation:blink 1.6s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.15}}
+
+h1{
+  font-family:'Bebas Neue',sans-serif;
+  font-size:clamp(56px,10vw,110px);
+  line-height:.92;letter-spacing:0.03em;
+  text-align:center;margin-bottom:1.25rem;
+  animation:rise .6s ease .08s both;
+}
+h1 span{
+  color:transparent;
+  -webkit-text-stroke:1px rgba(0,229,255,0.5);
+}
+
+.sub{
+  font-size:16px;color:var(--muted);text-align:center;
+  max-width:480px;line-height:1.65;margin-bottom:3rem;
+  animation:rise .6s ease .16s both;
+}
+
+/* SEARCH */
+.search-box{
+  width:100%;max-width:580px;
+  background:var(--surface);
+  border:1px solid var(--border2);
+  border-radius:8px;padding:6px 6px 6px 20px;
+  display:flex;align-items:center;gap:8px;
+  transition:border-color .2s,box-shadow .2s;
+  animation:rise .6s ease .24s both;
+}
+.search-box:focus-within{
+  border-color:rgba(0,229,255,0.4);
+  box-shadow:0 0 0 4px rgba(0,229,255,0.07);
+}
+.search-input{
+  flex:1;background:none;border:none;outline:none;
+  font-family:var(--mono);font-size:14px;color:var(--text);
+  caret-color:var(--accent);
+}
+.search-input::placeholder{color:var(--muted)}
+.search-btn{
+  height:44px;padding:0 28px;
+  background:var(--accent);color:#080b12;
+  border:none;border-radius:5px;
+  font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;
+  cursor:pointer;white-space:nowrap;
+  transition:background .15s,transform .1s;
+  flex-shrink:0;
+}
+.search-btn:hover{background:#33eaff}
+.search-btn:active{transform:scale(.97)}
+.search-btn:disabled{opacity:.5;pointer-events:none}
+
+.hint{
+  font-family:var(--mono);font-size:11px;color:var(--dim);
+  margin-top:.85rem;text-align:center;
+  animation:rise .6s ease .3s both;
+}
+.hint span{color:var(--muted);cursor:pointer;transition:color .15s}
+.hint span:hover{color:var(--accent)}
+
+.err{
+  display:none;margin-top:1rem;
+  background:rgba(255,80,80,0.08);border:1px solid rgba(255,80,80,0.25);
+  border-radius:6px;padding:10px 16px;
+  font-family:var(--mono);font-size:12px;color:#ff8080;
+  max-width:580px;width:100%;text-align:left;
+}
+
+/* PARAMS BAR */
+.params{
+  margin-top:3.5rem;width:100%;max-width:680px;
+  animation:rise .6s ease .36s both;
+}
+.params-label{
+  font-family:var(--mono);font-size:10px;color:var(--dim);
+  letter-spacing:.12em;text-transform:uppercase;margin-bottom:.85rem;
+}
+.params-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.param-card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:6px;padding:14px 12px;
+  position:relative;overflow:hidden;
+  transition:border-color .2s;
+}
+.param-card.live{border-color:rgba(0,229,255,0.2)}
+.param-card.live::after{
+  content:'';position:absolute;top:0;left:0;right:0;height:2px;
+  background:var(--accent);
+}
+.pn{font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:6px}
+.param-card.live .pn{color:var(--accent)}
+.pt{font-size:11px;font-weight:500;color:var(--muted);line-height:1.3}
+.param-card.live .pt{color:var(--text)}
+.ps{font-family:var(--mono);font-size:9px;color:var(--dim);margin-top:8px}
+.param-card.live .ps{color:var(--accent)}
+
+@keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+
+@media(max-width:600px){
+  nav{padding:1rem 1.25rem}
+  .params-grid{grid-template-columns:repeat(2,1fr)}
+  .param-card:nth-child(5){grid-column:span 2}
+}
+
+/* DISAMBIGUATION PICKER */
+.picker{
+  display:none;width:100%;max-width:580px;margin-top:1rem;
+  background:var(--surface);border:1px solid var(--border2);
+  border-radius:8px;overflow:hidden;
+  animation:rise .25s ease both;
+}
+.picker-header{
+  padding:10px 16px;border-bottom:1px solid var(--border);
+  font-family:var(--mono);font-size:11px;color:var(--muted);
+  letter-spacing:.06em;
+}
+.picker-header b{color:var(--accent)}
+.picker-list{max-height:320px;overflow-y:auto}
+.picker-item{
+  display:flex;align-items:center;gap:12px;
+  padding:11px 16px;cursor:pointer;
+  border-bottom:1px solid var(--border);
+  transition:background .12s;
+}
+.picker-item:last-child{border-bottom:none}
+.picker-item:hover{background:var(--surface2)}
+.picker-coin-name{
+  font-size:13px;font-weight:500;color:var(--text);flex:1;
+  text-transform:capitalize;
+}
+.picker-badge{
+  font-family:var(--mono);font-size:9px;font-weight:600;
+  padding:3px 7px;border-radius:3px;letter-spacing:.05em;flex-shrink:0;
+}
+.picker-badge.evm{background:rgba(188,140,255,.15);color:#bc8cff;border:1px solid rgba(188,140,255,.3)}
+.picker-badge.nonevm{background:rgba(240,136,62,.15);color:#f0883e;border:1px solid rgba(240,136,62,.3)}
+.picker-badge.btc{background:rgba(240,184,62,.15);color:#f0b83e;border:1px solid rgba(240,184,62,.3)}
+.picker-chain{font-family:var(--mono);font-size:10px;color:var(--muted);flex-shrink:0}
+.picker-contract{font-family:var(--mono);font-size:9px;color:var(--dim);flex-shrink:0}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="logo">Crypto<b>Risk</b></div>
+  <div class="nav-tag">BETA · FREE TOOLS ONLY</div>
+</nav>
+
+<main class="page">
+  <div class="eyebrow">On-chain risk intelligence</div>
+
+  <h1>KNOW THE RISK<br><span>BEFORE</span> YOU BUY</h1>
+
+  <p class="sub">Enter any coin name, ticker, or contract address. We score it 1–10 across 5 on-chain risk parameters — starting with holder concentration.</p>
+
+  <div class="search-box">
+    <input class="search-input" id="q" type="text"
+      placeholder="Bitcoin, ETH, PEPE, 0x6982508145454ce325ddbe47a25d4ec3d2311933 …"
+      autocomplete="off" spellcheck="false"/>
+    <button class="search-btn" id="btn" onclick="go()">Calculate Risk →</button>
+  </div>
+
+  <p class="hint">
+    Try: <span onclick="fill('Bitcoin')">Bitcoin</span> ·
+         <span onclick="fill('ETH')">ETH</span> ·
+         <span onclick="fill('PEPE')">PEPE</span> ·
+         <span onclick="fill('SOL')">SOL</span> ·
+         <span onclick="fill('BNB')">BNB</span>
+  </p>
+  <div class="err" id="err"></div>
+  <div class="picker" id="picker">
+    <div class="picker-header">
+      <b id="pickerCount">0</b> coins found matching "<span id="pickerQuery"></span>" — pick one:
+    </div>
+    <div class="picker-list" id="pickerList"></div>
+  </div>
+
+  <div class="params">
+    <div class="params-label">5 risk parameters</div>
+    <div class="params-grid">
+      <div class="param-card live"><div class="pn">01</div><div class="pt">Holder Concentration</div><div class="ps">● LIVE</div></div>
+      <div class="param-card"><div class="pn">02</div><div class="pt">Liquidity Depth</div><div class="ps">Coming soon</div></div>
+      <div class="param-card"><div class="pn">03</div><div class="pt">Contract Audit</div><div class="ps">Coming soon</div></div>
+      <div class="param-card"><div class="pn">04</div><div class="pt">Dev Wallet Activity</div><div class="ps">Coming soon</div></div>
+      <div class="param-card"><div class="pn">05</div><div class="pt">Market Cap / Volume</div><div class="ps">Coming soon</div></div>
+    </div>
+  </div>
+</main>
+
+<script>
+const API_BASE = '';  // empty = same origin (Vercel), or set to your Vercel URL e.g. "https://your-app.vercel.app"
+
+function fill(v){document.getElementById('q').value=v;hidePicker();document.getElementById('q').focus()}
+
+function hidePicker(){
+  document.getElementById('picker').style.display='none';
+}
+
+function showPicker(query, matches) {
+  const picker = document.getElementById('picker');
+  document.getElementById('pickerQuery').textContent = query;
+  document.getElementById('pickerCount').textContent = matches.length;
+
+  const list = document.getElementById('pickerList');
+  list.innerHTML = '';
+
+  matches.forEach(function(m) {
+    const item = document.createElement('div');
+    item.className = 'picker-item';
+
+    const badgeClass = m.type === 'EVM' ? 'evm' : m.type === 'BTC' ? 'btc' : 'nonevm';
+    const chainStr   = m.chain ? m.chain.toUpperCase() : '';
+    const contractStr = m.contract ? m.contract.slice(0,8) + '...' + m.contract.slice(-4) : '';
+
+    // Make name human-readable from cgId
+    const name = m.name || m.cgId.replace(/-/g,' ').replace(/\w/g,c=>c.toUpperCase());
+
+    item.innerHTML =
+      '<span class="picker-coin-name">' + name + '</span>' +
+      '<span class="picker-badge ' + badgeClass + '">' + m.type + '</span>' +
+      (chainStr ? '<span class="picker-chain">' + chainStr + '</span>' : '') +
+      (contractStr ? '<span class="picker-contract">' + contractStr + '</span>' : '');
+
+    item.onclick = function() {
+      // User picked — go directly to results with cgId to skip disambiguation
+      const url = 'results.html?q=' + encodeURIComponent(query) + '&cgId=' + encodeURIComponent(m.cgId);
+      window.location.href = url;
+    };
+
+    list.appendChild(item);
+  });
+
+  picker.style.display = 'block';
+}
+
+async function go() {
+  const v = document.getElementById('q').value.trim();
+  if (!v) return document.getElementById('q').focus();
+
+  const err = document.getElementById('err');
+  err.style.display = 'none';
+  hidePicker();
+
+  const btn = document.getElementById('btn');
+  btn.disabled = true;
+  btn.textContent = 'Searching…';
+
+  try {
+    const base = API_BASE || window.location.origin;
+    const res  = await fetch(base + '/api/analyze?query=' + encodeURIComponent(v));
+    const data = await res.json();
+
+    if (data.ambiguous) {
+      // Show the picker — let user choose
+      showPicker(v, data.matches);
+      btn.disabled = false;
+      btn.textContent = 'Calculate Risk →';
+      return;
+    }
+
+    if (data.error) {
+      err.textContent = data.error;
+      err.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Calculate Risk →';
+      return;
+    }
+
+    // Single unambiguous result — go to results page
+    // Pass the data via sessionStorage so results.html doesn't need to re-fetch
+    sessionStorage.setItem('cryptorisk_result', JSON.stringify(data));
+    sessionStorage.setItem('cryptorisk_query', v);
+    window.location.href = 'results.html?q=' + encodeURIComponent(v);
+
+  } catch(e) {
+    err.textContent = 'Network error — is the app running via Vercel?';
+    err.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Calculate Risk →';
+  }
+}
+
+document.getElementById('q').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') go();
+});
+
+// Hide picker when user starts typing again
+document.getElementById('q').addEventListener('input', hidePicker);
+</script>
+</body>
+</html>

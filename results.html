@@ -383,22 +383,18 @@ function drawDial(score){
 }
 
 // ── helpers ────────────────────────────────────────────────────
-function copyAddr(text, btn){
+function copyAddr(text,btn){
   navigator.clipboard.writeText(text).then(function(){
-    btn.textContent='Copied!';
-    btn.classList.add('copied');
-    setTimeout(function(){ btn.textContent='Copy'; btn.classList.remove('copied'); }, 1800);
+    btn.textContent='Copied!'; btn.classList.add('copied');
+    setTimeout(function(){ btn.textContent='Copy'; btn.classList.remove('copied'); },1800);
   }).catch(function(){
     var ta=document.createElement('textarea');
     ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
-    document.body.appendChild(ta); ta.select();
-    document.execCommand('copy');
-    document.body.removeChild(ta);
+    document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
     btn.textContent='Copied!'; btn.classList.add('copied');
-    setTimeout(function(){ btn.textContent='Copy'; btn.classList.remove('copied'); }, 1800);
+    setTimeout(function(){ btn.textContent='Copy'; btn.classList.remove('copied'); },1800);
   });
 }
-
 function short(addr){
   if(!addr)return '—';
   if(addr.startsWith('0x')&&addr.length>12) return addr.slice(0,10)+'…'+addr.slice(-6);
@@ -521,7 +517,10 @@ function render(data){
   const addrEl=document.getElementById('coinAddr');
   if(coin.address){
     addrEl.innerHTML='<span class="coin-addr-text" title="'+coin.address+'">'+short(coin.address)+'</span>'
-      +'<button class="copy-addr-btn" onclick="copyAddr(''+coin.address+'',this)">Copy</button>';
+      +'<button class="copy-addr-btn" id="copyAddrBtn" data-addr="'+coin.address+'">Copy</button>';
+    document.getElementById('copyAddrBtn').addEventListener('click',function(){
+      copyAddr(this.dataset.addr,this);
+    });
   } else {
     addrEl.innerHTML='';
   }

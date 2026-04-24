@@ -64,8 +64,13 @@ nav{position:sticky;top:0;z-index:10;display:flex;align-items:center;justify-con
 .coin-icon img{width:100%;height:100%;object-fit:cover;border-radius:50%}
 .coin-name{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:.06em}
 .coin-ticker{font-family:var(--mono);font-size:12px;color:var(--muted);margin-top:1px}
-.coin-addr{font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:3px;
-  word-break:break-all;max-width:260px}
+.coin-addr{display:flex;align-items:center;gap:6px;margin-top:4px;flex-wrap:wrap}
+.coin-addr-text{font-family:var(--mono);font-size:10px;color:var(--dim);word-break:break-all}
+.copy-addr-btn{background:none;border:1px solid var(--border);border-radius:3px;
+  color:var(--dim);font-family:var(--mono);font-size:9px;padding:2px 7px;
+  cursor:pointer;transition:all .15s;white-space:nowrap;flex-shrink:0}
+.copy-addr-btn:hover{border-color:var(--accent);color:var(--accent)}
+.copy-addr-btn.copied{border-color:#4dffb0;color:#4dffb0}
 .coin-meta{display:flex;gap:1.5rem;flex-wrap:wrap}
 .meta-item{text-align:right}
 .meta-lbl{font-family:var(--mono);font-size:9px;color:var(--dim);letter-spacing:.1em;text-transform:uppercase}
@@ -195,28 +200,6 @@ tr:hover td{background:rgba(255,255,255,0.015)}
   .coin-meta{justify-content:flex-start}
   .meta-item{text-align:left}
 }
-
-/* Disambiguation picker */
-.picker-overlay{position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.75);
-  display:flex;align-items:center;justify-content:center;padding:1rem}
-.picker-box{background:var(--surface);border:1px solid var(--border2);
-  border-radius:10px;width:100%;max-width:560px;overflow:hidden}
-.picker-hdr{padding:1rem 1.25rem;border-bottom:1px solid var(--border);
-  font-family:var(--mono);font-size:11px;color:var(--muted)}
-.picker-hdr b{color:var(--accent)}
-.picker-scroll{max-height:60vh;overflow-y:auto}
-.picker-item{display:grid;grid-template-columns:1fr auto auto auto;gap:.75rem;
-  align-items:center;padding:.8rem 1.25rem;cursor:pointer;
-  border-bottom:1px solid var(--border);transition:background .1s}
-.picker-item:last-child{border-bottom:none}
-.picker-item:hover{background:var(--surface2)}
-.picker-name{font-size:13px;font-weight:500;color:var(--text);text-transform:capitalize}
-.pbadge{font-family:var(--mono);font-size:9px;font-weight:700;padding:3px 7px;border-radius:3px}
-.pbadge.evm{background:rgba(188,140,255,.15);color:#bc8cff;border:1px solid rgba(188,140,255,.3)}
-.pbadge.nonevm{background:rgba(255,80,80,.15);color:#ff8080;border:1px solid rgba(255,80,80,.3)}
-.pbadge.btc{background:rgba(255,165,0,.15);color:#ffa500;border:1px solid rgba(255,165,0,.3)}
-.pchain{font-family:var(--mono);font-size:10px;color:var(--muted)}
-.pcontract{font-family:var(--mono);font-size:9px;color:var(--dim)}
 </style>
 </head>
 <body>
@@ -418,59 +401,24 @@ const lt=setInterval(()=>{ mi=(mi+1)%msgs.length; document.getElementById('loadM
 // ── global state ───────────────────────────────────────────────
 let gHolders=[];
 
-// -- ENTRY
-window.addEventListener('DOMContentLoaded', async () => {
-  const params = new URLSearchParams(location.search);
-  const q    = params.get('q');
-  const cgId = params.get('cgId');
+// ── ENTRY ─────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded',async()=>{
+  const q=new URLSearchParams(location.search).get('q');
+  if(!q){show('stErr');document.getElementById('errDetail').textContent='No coin specified.';return;}
+  document.title=`CryptoRisk — ${q}`;
 
-  if (!q) { show('stErr'); document.getElementById('errDetail').textContent = 'No coin specified.'; return; }
-  document.title = 'CryptoRisk - ' + q;
-
-  let apiUrl = '/api/analyze?query=' + encodeURIComponent(q);
-  if (cgId) apiUrl += '&cgId=' + encodeURIComponent(cgId);
-
-  try {
-    const resp = await fetch(apiUrl);
-    const data = await resp.json();
+  try{
+    const resp=await fetch(`/api/analyze?query=${encodeURIComponent(q)}`);
+    const data=await resp.json();
     clearInterval(lt);
-
-    if (data.ambiguous) { showPicker(q, data.matches); return; }
-    if (!resp.ok || data.error) { showError(data.error, q); return; }
-    gHolders = data.holders || [];
+    if(!resp.ok||data.error){showError(data.error,q);return;}
+    gHolders=data.holders||[];
     render(data);
-  } catch(e) {
+  }catch(e){
     clearInterval(lt);
-    showError('Network error - is the app running via Vercel (vercel dev)? Opening index.html directly won\'t work for the API.', q);
+    showError('Network error — is the app running via Vercel (vercel dev)? Opening index.html directly won\'t work for the API.',q);
   }
 });
-
-function showPicker(query, matches) {
-  document.getElementById('pickerQuery').textContent = query;
-  document.getElementById('pickerCount').textContent = matches.length;
-  const list = document.getElementById('pickerList');
-  list.innerHTML = '';
-  matches.forEach(function(m) {
-    const item = document.createElement('div');
-    item.className = 'picker-item';
-    const badgeClass = m.type === 'EVM' ? 'evm' : m.type === 'BTC' ? 'btc' : 'nonevm';
-    const name = (m.name || m.cgId).replace(/-/g, ' ');
-    const chainStr    = m.chain    ? m.chain.toUpperCase() : '-';
-    const contractStr = m.contract ? m.contract.slice(0,8) + '...' + m.contract.slice(-4) : '-';
-    item.innerHTML =
-      '<span class="picker-name">' + name + '</span>' +
-      '<span class="pbadge ' + badgeClass + '">' + m.type + '</span>' +
-      '<span class="pchain">' + chainStr + '</span>' +
-      '<span class="pcontract">' + contractStr + '</span>';
-    item.onclick = function() {
-      const url = new URL(location.href);
-      url.searchParams.set('cgId', m.cgId);
-      location.href = url.toString();
-    };
-    list.appendChild(item);
-  });
-  document.getElementById('pickerOverlay').style.display = 'flex';
-}
 
 function showError(msg,q){
   show('stErr');
@@ -497,7 +445,33 @@ function render(data){
   else{icon.textContent=(coin.ticker||'?').slice(0,2)}
   document.getElementById('coinName').textContent=coin.name;
   document.getElementById('coinTicker').textContent=`${coin.ticker} · ${coin.chainLabel||coin.chain||''}`;
-  document.getElementById('coinAddr').textContent=coin.address?short(coin.address):'';
+  const addrEl = document.getElementById('coinAddr');
+  if (coin.address) {
+    addrEl.innerHTML =
+      '<span class="coin-addr-text" title="' + coin.address + '">' + short(coin.address) + '</span>' +
+      '<button class="copy-addr-btn" id="copyAddrBtn">Copy</button>';
+    document.getElementById('copyAddrBtn').onclick = function() {
+      navigator.clipboard.writeText(coin.address).then(function() {
+        const btn = document.getElementById('copyAddrBtn');
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(function() { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1800);
+      }).catch(function() {
+        // fallback for older browsers
+        const ta = document.createElement('textarea');
+        ta.value = coin.address;
+        ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        const btn = document.getElementById('copyAddrBtn');
+        btn.textContent = 'Copied!'; btn.classList.add('copied');
+        setTimeout(function() { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1800);
+      });
+    };
+  } else {
+    addrEl.innerHTML = '';
+  }
 
   const meta=document.getElementById('coinMeta');
   meta.innerHTML=[
@@ -576,14 +550,5 @@ function showHolders(n,btn){
   renderHolders(gHolders,n);
 }
 </script>
-
-<div class="picker-overlay" id="pickerOverlay" style="display:none">
-  <div class="picker-box">
-    <div class="picker-hdr">
-      <b id="pickerCount">?</b> coins match "<span id="pickerQuery"></span>" - select the one you want:
-    </div>
-    <div class="picker-scroll" id="pickerList"></div>
-  </div>
-</div>
 </body>
 </html>

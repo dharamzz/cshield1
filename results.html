@@ -195,6 +195,28 @@ tr:hover td{background:rgba(255,255,255,0.015)}
   .coin-meta{justify-content:flex-start}
   .meta-item{text-align:left}
 }
+
+/* Disambiguation picker */
+.picker-overlay{position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.75);
+  display:flex;align-items:center;justify-content:center;padding:1rem}
+.picker-box{background:var(--surface);border:1px solid var(--border2);
+  border-radius:10px;width:100%;max-width:560px;overflow:hidden}
+.picker-hdr{padding:1rem 1.25rem;border-bottom:1px solid var(--border);
+  font-family:var(--mono);font-size:11px;color:var(--muted)}
+.picker-hdr b{color:var(--accent)}
+.picker-scroll{max-height:60vh;overflow-y:auto}
+.picker-item{display:grid;grid-template-columns:1fr auto auto auto;gap:.75rem;
+  align-items:center;padding:.8rem 1.25rem;cursor:pointer;
+  border-bottom:1px solid var(--border);transition:background .1s}
+.picker-item:last-child{border-bottom:none}
+.picker-item:hover{background:var(--surface2)}
+.picker-name{font-size:13px;font-weight:500;color:var(--text);text-transform:capitalize}
+.pbadge{font-family:var(--mono);font-size:9px;font-weight:700;padding:3px 7px;border-radius:3px}
+.pbadge.evm{background:rgba(188,140,255,.15);color:#bc8cff;border:1px solid rgba(188,140,255,.3)}
+.pbadge.nonevm{background:rgba(255,80,80,.15);color:#ff8080;border:1px solid rgba(255,80,80,.3)}
+.pbadge.btc{background:rgba(255,165,0,.15);color:#ffa500;border:1px solid rgba(255,165,0,.3)}
+.pchain{font-family:var(--mono);font-size:10px;color:var(--muted)}
+.pcontract{font-family:var(--mono);font-size:9px;color:var(--dim)}
 </style>
 </head>
 <body>
@@ -396,48 +418,59 @@ const lt=setInterval(()=>{ mi=(mi+1)%msgs.length; document.getElementById('loadM
 // ── global state ───────────────────────────────────────────────
 let gHolders=[];
 
-// ── ENTRY ─────────────────────────────────────────────────────
-window.addEventListener('DOMContentLoaded',async()=>{
+// -- ENTRY
+window.addEventListener('DOMContentLoaded', async () => {
   const params = new URLSearchParams(location.search);
-  const q      = params.get('q');
-  const cgId   = params.get('cgId');
+  const q    = params.get('q');
+  const cgId = params.get('cgId');
 
-  if(!q){show('stErr');document.getElementById('errDetail').textContent='No coin specified.';return;}
-  document.title=`CryptoRisk — ${q}`;
+  if (!q) { show('stErr'); document.getElementById('errDetail').textContent = 'No coin specified.'; return; }
+  document.title = 'CryptoRisk - ' + q;
 
-  // Use cached result from index.html if available (single-match fast path)
-  const cached  = sessionStorage.getItem('cryptorisk_result');
-  const cachedQ = sessionStorage.getItem('cryptorisk_query');
-  if(cached && cachedQ === q && !cgId){
-    try{
-      sessionStorage.removeItem('cryptorisk_result');
-      sessionStorage.removeItem('cryptorisk_query');
-      const data = JSON.parse(cached);
-      clearInterval(lt);
-      if(data.error){showError(data.error,q);return;}
-      gHolders=data.holders||[];
-      render(data);
-      return;
-    }catch(e){}
-  }
+  let apiUrl = '/api/analyze?query=' + encodeURIComponent(q);
+  if (cgId) apiUrl += '&cgId=' + encodeURIComponent(cgId);
 
-  // Build URL — include cgId if user picked from disambiguation picker
-  let apiUrl = `/api/analyze?query=${encodeURIComponent(q)}`;
-  if(cgId) apiUrl += `&cgId=${encodeURIComponent(cgId)}`;
-
-  try{
-    const resp=await fetch(apiUrl);
-    const data=await resp.json();
+  try {
+    const resp = await fetch(apiUrl);
+    const data = await resp.json();
     clearInterval(lt);
-    if(!resp.ok||data.error){showError(data.error,q);return;}
-    if(data.ambiguous){showError('Ambiguous coin — please go back and select from the list.',q);return;}
-    gHolders=data.holders||[];
+
+    if (data.ambiguous) { showPicker(q, data.matches); return; }
+    if (!resp.ok || data.error) { showError(data.error, q); return; }
+    gHolders = data.holders || [];
     render(data);
-  }catch(e){
+  } catch(e) {
     clearInterval(lt);
-    showError('Network error — is the app running via Vercel (vercel dev)? Opening index.html directly won't work for the API.',q);
+    showError('Network error - is the app running via Vercel (vercel dev)? Opening index.html directly won\'t work for the API.', q);
   }
 });
+
+function showPicker(query, matches) {
+  document.getElementById('pickerQuery').textContent = query;
+  document.getElementById('pickerCount').textContent = matches.length;
+  const list = document.getElementById('pickerList');
+  list.innerHTML = '';
+  matches.forEach(function(m) {
+    const item = document.createElement('div');
+    item.className = 'picker-item';
+    const badgeClass = m.type === 'EVM' ? 'evm' : m.type === 'BTC' ? 'btc' : 'nonevm';
+    const name = (m.name || m.cgId).replace(/-/g, ' ');
+    const chainStr    = m.chain    ? m.chain.toUpperCase() : '-';
+    const contractStr = m.contract ? m.contract.slice(0,8) + '...' + m.contract.slice(-4) : '-';
+    item.innerHTML =
+      '<span class="picker-name">' + name + '</span>' +
+      '<span class="pbadge ' + badgeClass + '">' + m.type + '</span>' +
+      '<span class="pchain">' + chainStr + '</span>' +
+      '<span class="pcontract">' + contractStr + '</span>';
+    item.onclick = function() {
+      const url = new URL(location.href);
+      url.searchParams.set('cgId', m.cgId);
+      location.href = url.toString();
+    };
+    list.appendChild(item);
+  });
+  document.getElementById('pickerOverlay').style.display = 'flex';
+}
 
 function showError(msg,q){
   show('stErr');
@@ -543,5 +576,14 @@ function showHolders(n,btn){
   renderHolders(gHolders,n);
 }
 </script>
+
+<div class="picker-overlay" id="pickerOverlay" style="display:none">
+  <div class="picker-box">
+    <div class="picker-hdr">
+      <b id="pickerCount">?</b> coins match "<span id="pickerQuery"></span>" - select the one you want:
+    </div>
+    <div class="picker-scroll" id="pickerList"></div>
+  </div>
+</div>
 </body>
 </html>

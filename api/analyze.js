@@ -58,6 +58,13 @@ export default async function handler(req, res) {
       return res.status(200).json(data);
     }
 
+    // BTC and ETH are always unambiguous — skip disambiguation entirely
+    const ql = query.trim().toLowerCase();
+    if (/^(btc|bitcoin)$/i.test(ql) || /^(eth|ethereum|ether)$/i.test(ql)) {
+      const data = await analyze(query.trim());
+      return res.status(200).json(data);
+    }
+
     // Check for ambiguous match (multiple coins share this ticker/name)
     const matches = coinLookupAll(query.trim());
     if (matches.length > 1) {

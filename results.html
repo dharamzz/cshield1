@@ -64,8 +64,13 @@ nav{position:sticky;top:0;z-index:10;display:flex;align-items:center;justify-con
 .coin-icon img{width:100%;height:100%;object-fit:cover;border-radius:50%}
 .coin-name{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:.06em}
 .coin-ticker{font-family:var(--mono);font-size:12px;color:var(--muted);margin-top:1px}
-.coin-addr{font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:3px;
-  word-break:break-all;max-width:260px}
+.coin-addr{display:flex;align-items:center;gap:6px;margin-top:4px;flex-wrap:wrap}
+.coin-addr-text{font-family:var(--mono);font-size:10px;color:var(--dim);word-break:break-all}
+.copy-addr-btn{background:none;border:1px solid var(--border);border-radius:3px;
+  color:var(--dim);font-family:var(--mono);font-size:9px;padding:2px 7px;
+  cursor:pointer;transition:all .15s;white-space:nowrap;flex-shrink:0}
+.copy-addr-btn:hover{border-color:var(--accent);color:var(--accent)}
+.copy-addr-btn.copied{border-color:#4dffb0;color:#4dffb0}
 .coin-meta{display:flex;gap:1.5rem;flex-wrap:wrap}
 .meta-item{text-align:right}
 .meta-lbl{font-family:var(--mono);font-size:9px;color:var(--dim);letter-spacing:.1em;text-transform:uppercase}
@@ -378,6 +383,22 @@ function drawDial(score){
 }
 
 // ── helpers ────────────────────────────────────────────────────
+function copyAddr(text, btn){
+  navigator.clipboard.writeText(text).then(function(){
+    btn.textContent='Copied!';
+    btn.classList.add('copied');
+    setTimeout(function(){ btn.textContent='Copy'; btn.classList.remove('copied'); }, 1800);
+  }).catch(function(){
+    var ta=document.createElement('textarea');
+    ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    btn.textContent='Copied!'; btn.classList.add('copied');
+    setTimeout(function(){ btn.textContent='Copy'; btn.classList.remove('copied'); }, 1800);
+  });
+}
+
 function short(addr){
   if(!addr)return '—';
   if(addr.startsWith('0x')&&addr.length>12) return addr.slice(0,10)+'…'+addr.slice(-6);
@@ -497,7 +518,13 @@ function render(data){
   else{icon.textContent=(coin.ticker||'?').slice(0,2)}
   document.getElementById('coinName').textContent=coin.name;
   document.getElementById('coinTicker').textContent=`${coin.ticker} · ${coin.chainLabel||coin.chain||''}`;
-  document.getElementById('coinAddr').textContent=coin.address?short(coin.address):'';
+  const addrEl=document.getElementById('coinAddr');
+  if(coin.address){
+    addrEl.innerHTML='<span class="coin-addr-text" title="'+coin.address+'">'+short(coin.address)+'</span>'
+      +'<button class="copy-addr-btn" onclick="copyAddr(''+coin.address+'',this)">Copy</button>';
+  } else {
+    addrEl.innerHTML='';
+  }
 
   const meta=document.getElementById('coinMeta');
   meta.innerHTML=[

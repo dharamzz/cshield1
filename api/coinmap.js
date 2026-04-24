@@ -17563,11 +17563,9 @@ export const COINS = [
 
 ];
 
-// ── Single-match index (first entry wins — for exact known lookups) ────────
+// Single-match index (first entry wins)
 const _index = new Map();
-
-// ── Multi-match index (stores ALL entries per alias) ───────────────────────
-// Used for disambiguation when multiple coins share the same ticker/name.
+// Multi-match index (all entries per alias)
 const _indexAll = new Map();
 
 for (const entry of COINS) {
@@ -17579,26 +17577,17 @@ for (const entry of COINS) {
   }
 }
 
-/**
- * lookup(query) — returns the single best-match entry, or undefined.
- * For EVM coins this is usually unambiguous (contract address is unique).
- */
+// Returns single best match or undefined
 export function lookup(query) {
   return _index.get(query.toLowerCase().trim());
 }
 
-/**
- * lookupAll(query) — returns ALL entries that match this alias.
- * Returns an array — length > 1 means disambiguation is needed.
- */
+// Returns ALL matches — length > 1 means disambiguation needed
 export function lookupAll(query) {
   return _indexAll.get(query.toLowerCase().trim()) || [];
 }
 
-/**
- * lookupByCgId(cgId) — find a specific coin by its CoinGecko ID.
- * Used after the user picks from the disambiguation list.
- */
+// Find a specific coin by CoinGecko ID (used after user picks from picker)
 export function lookupByCgId(cgId) {
   return COINS.find(c => c.cgId === cgId) || null;
 }

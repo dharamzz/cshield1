@@ -50,37 +50,33 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Missing ?query= parameter" });
 
   try {
-    // If caller already picked a specific coin (by cgId), skip disambiguation
+    // User already picked a specific coin from the disambiguation picker
     if (cgId?.trim()) {
       const entry = lookupByCgId(cgId.trim());
-      if (!entry) return res.status(404).json({ error: `Coin "${cgId}" not found in coinmap.` });
+      if (!entry) return res.status(404).json({ error: `Coin not found in coinmap: ${cgId}` });
       const data = await analyzeEntry(entry, query.trim());
       return res.status(200).json(data);
     }
 
-    // Check if this query is ambiguous (multiple coins with same ticker/name)
-    const q  = query.trim();
-    const ql = q.toLowerCase();
-    const matches = coinLookupAll(ql);
-
-    // More than one distinct coin maps to this alias → ask user to pick
+    // Check for ambiguous match (multiple coins share this ticker/name)
+    const matches = coinLookupAll(query.trim());
     if (matches.length > 1) {
       return res.status(200).json({
         ambiguous: true,
-        query: q,
+        query: query.trim(),
         matches: matches.map(m => ({
           cgId:     m.cgId,
-          name:     m.cgId.replace(/-/g, ' '),  // human-readable fallback
+          name:     m.cgId.replace(/-/g, ' '),
           type:     m.type,
-          chain:    m.chain || null,
+          chain:    m.chain  || null,
           contract: m.contract || null,
           aliases:  m.aliases,
         })),
       });
     }
 
-    // Single match or zero matches — proceed normally
-    const data = await analyze(q);
+    // Single or zero matches — normal flow
+    const data = await analyze(query.trim());
     return res.status(200).json(data);
   } catch (err) {
     console.error("[analyze]", err.message);
@@ -134,8 +130,6 @@ async function analyze(query) {
 // ROUTING — detect what was entered and pick the right live data source
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ── analyzeEntry — run analysis for a specific coinmap entry (post-disambiguation)
-// Called when user has already picked from the disambiguation picker.
 async function analyzeEntry(entry, originalQuery) {
   if (entry.type === "NON-EVM") {
     throw new Error(
@@ -143,10 +137,8 @@ async function analyzeEntry(entry, originalQuery) {
       `"${originalQuery.toUpperCase()}" is a non-EVM coin. Support for other chains will be added shortly.`
     );
   }
-
   if (entry.type === "BTC") return analyze("bitcoin");
 
-  // EVM — fetch metadata then run the full analysis pipeline
   const cgData = await cgMeta(entry.cgId).catch(() => null);
   const meta = {
     name:      cgData?.name                            || originalQuery,
@@ -155,12 +147,10 @@ async function analyzeEntry(entry, originalQuery) {
     price:     cgData?.market_data?.current_price?.usd || null,
     marketCap: cgData?.market_data?.market_cap?.usd    || null,
   };
-
   const { coin, holders } = await fetchEVMTokenHolders(entry.contract, entry.chain, meta);
   const classified = classifyHolders(holders);
   const metrics    = computeMetrics(classified);
   const score      = scoreHolderConcentration(metrics);
-
   return {
     coin,
     holders: classified.all.slice(0, 20).map(h => ({ ...h, walletType: h._tag })),

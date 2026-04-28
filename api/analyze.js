@@ -174,7 +174,6 @@ async function resolveHolders(query) {
   if (/^(btc|bitcoin)$/i.test(ql))        return fetchBitcoinHolders();
   if (/^(eth|ethereum|ether)$/i.test(ql)) return fetchEthereumHolders();
 
-  // Coinmap lookup — check type FIRST, zero API calls for known coins
   const mapped = coinLookup(ql);
   if (mapped) {
     if (mapped.type === "NON-EVM") throw new Error(
@@ -387,7 +386,7 @@ async function fetchEthereumHolders(meta = {}) {
   // Fetch live ETH balances for all known large wallets in parallel
   const results = await Promise.allSettled(
     KNOWN_ETH_WALLETS.map(w =>
-      ethplorerFetch(`https://api.ethplorer.io/getAddressInfo/${w.address}?apiKey=${KEY}`)
+      fetchJSON(`https://api.ethplorer.io/getAddressInfo/${w.address}?apiKey=${KEY}`)
         .then(d => ({ ...w, ethBalance: d.ETH?.balance || 0 }))
     )
   );
@@ -962,45 +961,21 @@ async function fetchMoralisHolders(address, moralisChain, meta = {}) {
   };
 }
 
-// Ethplorer fetch with exponential backoff on 429 (freekey: 3 req/sec limit)
-// Retries: 2s → 5s → 10s
-async function ethplorerFetch(url) {
-  const waits = [2000, 5000, 10000];
-  for (let i = 0; i <= waits.length; i++) {
-    try {
-      const r = await fetch(url, { headers: { Accept: "application/json" } });
-      if (r.status === 429) {
-        if (i === waits.length) throw new Error(
-          `Ethplorer rate limit reached. Register a free API key at ethplorer.io ` +
-          `and add ETHPLORER_API_KEY to your Vercel environment variables for higher limits.`
-        );
-        console.warn(`[Ethplorer] 429 — waiting ${waits[i]/1000}s (retry ${i+1})`);
-        await new Promise(res => setTimeout(res, waits[i]));
-        continue;
-      }
-      if (!r.ok) throw new Error(`HTTP ${r.status} from api.ethplorer.io`);
-      return r.json();
-    } catch(e) {
-      if (e.message === 'Stopped') throw e;
-      if ((e.message?.includes('429') || e.status === 429) && i < waits.length) continue;
-      throw e;
-    }
-  }
-}
-
 async function fetchEthplorerByAddress(address, meta = {}, chainHint = "ethereum") {
   const KEY = process.env.ETHPLORER_API_KEY || "freekey";
   let tokenInfo = {};
 
   try {
-    const info = await ethplorerFetch(`https://api.ethplorer.io/getTokenInfo/${address}?apiKey=${KEY}`);
+    const info = await fetchJSON(`https://api.ethplorer.io/getTokenInfo/${address}?apiKey=${KEY}`);
     if (info.error) throw new Error(info.error.message || "Token not found");
     tokenInfo = info;
   } catch (e) {
     if (!meta.name) throw new Error(`Ethplorer: ${e.message}`);
   }
 
-  const holdersResp = await ethplorerFetch(`https://api.ethplorer.io/getTopTokenHolders/${address}?apiKey=${KEY}&limit=20`);
+  const holdersResp = await fetchJSON(
+    `https://api.ethplorer.io/getTopTokenHolders/${address}?apiKey=${KEY}&limit=20`
+  );
   if (holdersResp.error)
     throw new Error(`Ethplorer holders: ${holdersResp.error.message || JSON.stringify(holdersResp.error)}`);
 
@@ -1031,25 +1006,128 @@ async function fetchEthplorerByAddress(address, meta = {}, chainHint = "ethereum
 }
 
 // Try Ethplorer (free, no key) → Moralis (free key) for any EVM token
+// ─────────────────────────────────────────────────────────────────────────────
+// COVALENT API — free tier, covers 20+ EVM chains
+// Sign up free at https://goldrush.dev (no credit card)
+// Add COVALENT_API_KEY to Vercel environment variables
+// Free tier: 100,000 credits/month — token holders = 1 credit per call
+// ─────────────────────────────────────────────────────────────────────────────
+const COVALENT_CHAIN_IDS = {
+  "eth":           1,
+  "bsc":           56,
+  "polygon":       137,
+  "avalanche":     43114,
+  "arbitrum":      42161,
+  "base":          8453,
+  "optimism":      10,
+  "fantom":        250,
+  "cronos":        25,
+  "gnosis":        100,
+  "celo":          42220,
+  "moonbeam":      1284,
+  "moonriver":     1285,
+  "aurora":        1313161554,
+  "metis":         1088,
+  "linea":         59144,
+  "scroll":        534352,
+  "blast":         81457,
+  "mantle":        5000,
+  "zksync":        324,
+  "kava":          2222,
+  "klaytn":        8217,
+  "harmony":       1666600000,
+  "astar":         592,
+  "arbitrum_nova": 42170,
+  "polygon_zkevm": 1101,
+  "mode":          34443,
+  "manta":         169,
+};
+
+async function fetchCovalentHolders(address, chain, meta = {}) {
+  const KEY     = process.env.COVALENT_API_KEY;
+  if (!KEY) throw new Error("COVALENT_API_KEY not set");
+
+  const chainId = COVALENT_CHAIN_IDS[chain];
+  if (!chainId) throw new Error(`Chain "${chain}" not in Covalent chain map`);
+
+  const chainLabel = CHAIN_LABELS[chain] || chain;
+  const url = `https://api.covalenthq.com/v1/${chainId}/tokens/${address}/token_holders/?page-size=100&page-number=0`;
+  const r   = await fetch(url, {
+    headers: { "Authorization": `Bearer ${KEY}`, "Accept": "application/json" }
+  });
+  if (!r.ok) throw new Error(`Covalent HTTP ${r.status}`);
+  const d = await r.json();
+  if (d.error) throw new Error(`Covalent: ${d.error_message || d.error_code}`);
+
+  const items = d?.data?.items || [];
+  if (!items.length) throw new Error("Covalent returned 0 holders");
+
+  const decimals    = d?.data?.items?.[0]?.contract_decimals ?? 18;
+  const totalSupply = items.reduce((s, h) => s + parseFloat(h.balance || 0), 0);
+
+  const holders = items.slice(0, 50).map(h => {
+    const bal = parseFloat(h.balance || 0);
+    const pct = totalSupply > 0 ? parseFloat(((bal / totalSupply) * 100).toFixed(4)) : 0;
+    const fmt = (bal / Math.pow(10, decimals)).toLocaleString(undefined, { maximumFractionDigits: 2 }) + " tokens";
+    return {
+      address:    h.address,
+      percentage: pct,
+      balance:    fmt,
+      label:      null, entity: null, isContract: false,
+      chain,
+    };
+  });
+
+  return {
+    coin: {
+      name:       meta.name   || d?.data?.contract_name                   || "Unknown Token",
+      ticker:     meta.ticker || d?.data?.contract_ticker_symbol          || address.slice(0, 6).toUpperCase(),
+      address, chain, chainLabel,
+      source:     `Covalent API (live) — ${chainLabel}`,
+      ...meta,
+    },
+    holders,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EVM TOKEN CASCADE — Ethplorer → Covalent → Moralis → clear message
+// ─────────────────────────────────────────────────────────────────────────────
 async function fetchEVMTokenHolders(address, chain, meta = {}) {
   const chainLabel = CHAIN_LABELS[chain] || chain;
 
-  // ETH and BSC — Ethplorer (free, no key needed, has backoff)
+  // 1. Ethplorer — free, no key, covers ETH + BSC
   if (chain === "eth" || chain === "bsc") {
-    return fetchEthplorerByAddress(address, meta, chain === "bsc" ? "bsc" : "ethereum");
-  }
-
-  // Other EVM chains — try Moralis if key is set
-  const KEY = process.env.MORALIS_API_KEY;
-  if (KEY) {
     try {
-      return await fetchMoralisHolders(address, chain, meta);
+      return await fetchEthplorerByAddress(address, meta, chain === "bsc" ? "bsc" : "ethereum");
     } catch (e) {
-      console.warn(`[Moralis] ${chain}: ${e.message}`);
+      console.warn(`[Ethplorer] ${e.message} — trying Covalent`);
     }
   }
 
-  // No provider available — clear message
+  // 2. Covalent — free key (goldrush.dev), covers 20+ chains
+  try {
+    return await fetchCovalentHolders(address, chain, meta);
+  } catch (e) {
+    if (e.message.includes("COVALENT_API_KEY not set")) {
+      console.warn("[Covalent] key not set — trying Moralis");
+    } else {
+      console.warn(`[Covalent] ${e.message} — trying Moralis`);
+    }
+  }
+
+  // 3. Moralis — fallback (free key from moralis.io, getTokenOwners may need paid plan)
+  try {
+    return await fetchMoralisHolders(address, chain, meta);
+  } catch (e) {
+    if (e.message.includes("MORALIS_API_KEY not set")) {
+      console.warn("[Moralis] key not set");
+    } else {
+      console.warn(`[Moralis] ${e.message}`);
+    }
+  }
+
+  // 4. All providers failed — clear message
   throw new Error(
     `Currently only Bitcoin and Ethereum ERC-20 tokens are fully supported. ` +
     `Holder data for ${meta.name || address} on ${chainLabel} is not yet available. ` +

@@ -53,18 +53,15 @@ export default async function handler(req, res) {
     const q  = query.trim();
     const ql = q.toLowerCase();
 
-    // BTC and ETH — always unambiguous, skip disambiguation
     if (/^(btc|bitcoin)$/i.test(ql) || /^(eth|ethereum|ether)$/i.test(ql))
       return res.status(200).json(await analyze(q));
 
-    // User already picked from disambiguation picker
     if (cgId?.trim()) {
       const entry = lookupByCgId(cgId.trim());
       if (!entry) return res.status(404).json({ error: `Coin not found: ${cgId}` });
       return res.status(200).json(await analyzeEntry(entry, q));
     }
 
-    // Check for ambiguous match
     const matches = coinLookupAll(q);
     if (matches.length > 1) {
       return res.status(200).json({
@@ -140,10 +137,10 @@ async function analyzeEntry(entry, originalQuery) {
     `https://api.coingecko.com/api/v3/coins/${entry.cgId}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false`
   ).catch(() => null);
   const meta = {
-    name:      cgData?.name || originalQuery,
-    ticker:    cgData?.symbol?.toUpperCase() || originalQuery.toUpperCase(),
-    image:     cgData?.image?.small || null,
-    price:     cgData?.market_data?.current_price?.usd || null,
+    name: cgData?.name || originalQuery,
+    ticker: cgData?.symbol?.toUpperCase() || originalQuery.toUpperCase(),
+    image: cgData?.image?.small || null,
+    price: cgData?.market_data?.current_price?.usd || null,
     marketCap: cgData?.market_data?.market_cap?.usd || null,
   };
   const { coin, holders } = await fetchEVMTokenHolders(entry.contract, entry.chain, meta);
@@ -173,29 +170,18 @@ async function resolveHolders(query) {
   const q  = query.trim();
   const ql = q.toLowerCase();
 
-  // 0x contract address — straight to EVM handler
   if (/^0x[a-fA-F0-9]{40}$/.test(q)) return resolveEVMAddress(q);
-
-  // BTC shortcut
-  if (/^(btc|bitcoin)$/i.test(ql)) return fetchBitcoinHolders();
-
-  // ETH shortcut
+  if (/^(btc|bitcoin)$/i.test(ql))        return fetchBitcoinHolders();
   if (/^(eth|ethereum|ether)$/i.test(ql)) return fetchEthereumHolders();
 
-  // Coinmap lookup — check type FIRST before any API calls
+  // Coinmap lookup — check type FIRST, zero API calls for known coins
   const mapped = coinLookup(ql);
   if (mapped) {
-    // NON-EVM — return unsupported message immediately, zero API calls
-    if (mapped.type === "NON-EVM") {
-      throw new Error(
-        `Currently only Bitcoin and EVM-based coins are supported. ` +
-        `"${q.toUpperCase()}" is a non-EVM coin. Support for other chains will be added shortly.`
-      );
-    }
-    // BTC
+    if (mapped.type === "NON-EVM") throw new Error(
+      `Currently only Bitcoin and EVM-based coins are supported. ` +
+      `"${q.toUpperCase()}" is a non-EVM coin. Support for other chains will be added shortly.`
+    );
     if (mapped.type === "BTC") return fetchBitcoinHolders();
-
-    // EVM — fetch metadata then holders
     if (mapped.type === "EVM") {
       const cgData = await cgMeta(mapped.cgId);
       const meta = {
@@ -209,9 +195,9 @@ async function resolveHolders(query) {
     }
   }
 
-  // Not in coinmap — fall through to CoinGecko
   return resolveByName(q);
 }
+
 // ─────────────────────────────────────────────────────────────────────────────
 // BITCOIN — Blockchain.com public richlist API (no key, always live)
 // Docs: https://www.blockchain.com/explorer/api/charts_api
@@ -401,7 +387,7 @@ async function fetchEthereumHolders(meta = {}) {
   // Fetch live ETH balances for all known large wallets in parallel
   const results = await Promise.allSettled(
     KNOWN_ETH_WALLETS.map(w =>
-      fetchJSON(`https://api.ethplorer.io/getAddressInfo/${w.address}?apiKey=${KEY}`)
+      ethplorerFetch(`https://api.ethplorer.io/getAddressInfo/${w.address}?apiKey=${KEY}`)
         .then(d => ({ ...w, ethBalance: d.ETH?.balance || 0 }))
     )
   );
@@ -976,21 +962,45 @@ async function fetchMoralisHolders(address, moralisChain, meta = {}) {
   };
 }
 
+// Ethplorer fetch with exponential backoff on 429 (freekey: 3 req/sec limit)
+// Retries: 2s → 5s → 10s
+async function ethplorerFetch(url) {
+  const waits = [2000, 5000, 10000];
+  for (let i = 0; i <= waits.length; i++) {
+    try {
+      const r = await fetch(url, { headers: { Accept: "application/json" } });
+      if (r.status === 429) {
+        if (i === waits.length) throw new Error(
+          `Ethplorer rate limit reached. Register a free API key at ethplorer.io ` +
+          `and add ETHPLORER_API_KEY to your Vercel environment variables for higher limits.`
+        );
+        console.warn(`[Ethplorer] 429 — waiting ${waits[i]/1000}s (retry ${i+1})`);
+        await new Promise(res => setTimeout(res, waits[i]));
+        continue;
+      }
+      if (!r.ok) throw new Error(`HTTP ${r.status} from api.ethplorer.io`);
+      return r.json();
+    } catch(e) {
+      if (e.message === 'Stopped') throw e;
+      if ((e.message?.includes('429') || e.status === 429) && i < waits.length) continue;
+      throw e;
+    }
+  }
+}
+
 async function fetchEthplorerByAddress(address, meta = {}, chainHint = "ethereum") {
   const KEY = process.env.ETHPLORER_API_KEY || "freekey";
   let tokenInfo = {};
 
   try {
-    const info = await fetchJSON(`https://api.ethplorer.io/getTokenInfo/${address}?apiKey=${KEY}`);
+    const info = await ethplorerFetch(`https://api.ethplorer.io/getTokenInfo/${address}?apiKey=${KEY}`);
     if (info.error) throw new Error(info.error.message || "Token not found");
     tokenInfo = info;
   } catch (e) {
     if (!meta.name) throw new Error(`Ethplorer: ${e.message}`);
   }
 
-  const holdersResp = await fetchJSON(
-    `https://api.ethplorer.io/getTopTokenHolders/${address}?apiKey=${KEY}&limit=20`
-  );
+  const holdersResp = await ethplorerFetch(`https://api.ethplorer.io/getTopTokenHolders/${address}?apiKey=${KEY}&limit=20`);
   if (holdersResp.error)
     throw new Error(`Ethplorer holders: ${holdersResp.error.message || JSON.stringify(holdersResp.error)}`);
 
@@ -1021,44 +1031,27 @@ async function fetchEthplorerByAddress(address, meta = {}, chainHint = "ethereum
 }
 
 // Try Ethplorer (free, no key) → Moralis (free key) for any EVM token
-// EVM chains supported by Ethplorer (free, no key needed)
-const ETHPLORER_CHAINS = new Set(["eth", "ethereum", "bsc"]);
-
-// EVM chains supported by Moralis free tier
-// NOTE: getTokenOwners requires paid Moralis plan.
-// Only ETH and BSC are reliably available via Ethplorer for free.
-// All other EVM chains show "not yet available" until a paid provider is configured.
-const MORALIS_CHAINS = new Set([
-  "polygon", "avalanche", "arbitrum", "base", "optimism",
-  "fantom", "cronos", "linea", "gnosis", "celo",
-  "moonbeam", "moonriver", "aurora", "scroll", "blast",
-  "mantle", "zksync", "pulse", "harmony", "metis", "kava", "klaytn",
-]);
-
 async function fetchEVMTokenHolders(address, chain, meta = {}) {
   const chainLabel = CHAIN_LABELS[chain] || chain;
 
-  // ETH and BSC — use Ethplorer (free, reliable)
-  if (ETHPLORER_CHAINS.has(chain)) {
+  // ETH and BSC — Ethplorer (free, no key needed, has backoff)
+  if (chain === "eth" || chain === "bsc") {
     return fetchEthplorerByAddress(address, meta, chain === "bsc" ? "bsc" : "ethereum");
   }
 
-  // Other EVM chains — try Moralis (requires MORALIS_API_KEY + paid plan for getTokenOwners)
-  if (MORALIS_CHAINS.has(chain)) {
-    const KEY = process.env.MORALIS_API_KEY;
-    if (KEY) {
-      try {
-        return await fetchMoralisHolders(address, chain, meta);
-      } catch (e) {
-        console.warn(`[Moralis] ${chain}: ${e.message}`);
-        // Fall through to unsupported message
-      }
+  // Other EVM chains — try Moralis if key is set
+  const KEY = process.env.MORALIS_API_KEY;
+  if (KEY) {
+    try {
+      return await fetchMoralisHolders(address, chain, meta);
+    } catch (e) {
+      console.warn(`[Moralis] ${chain}: ${e.message}`);
     }
   }
 
-  // Chain not supported or all providers failed — clear message
+  // No provider available — clear message
   throw new Error(
-    `Currently only Bitcoin and Ethereum-based (ERC-20) coins are fully supported. ` +
+    `Currently only Bitcoin and Ethereum ERC-20 tokens are fully supported. ` +
     `Holder data for ${meta.name || address} on ${chainLabel} is not yet available. ` +
     `Support for additional EVM chains will be added shortly.`
   );

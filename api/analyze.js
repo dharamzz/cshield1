@@ -38,43 +38,20 @@
 //   ETHPLORER_API_KEY   free at https://ethplorer.io/wallet   (higher rate limits)
 //   HELIUS_API_KEY      free at https://helius.dev            (required for Solana)
 
-import { lookup as coinLookup, lookupAll as coinLookupAll, lookupByCgId } from "./coinmap.js";
+import { lookup as coinLookup } from "./coinmap.js";
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
   if (req.method === "OPTIONS") return res.status(200).end();
 
-  const { query, cgId } = req.query;
+  const { query } = req.query;
   if (!query?.trim())
     return res.status(400).json({ error: "Missing ?query= parameter" });
 
   try {
-    const q  = query.trim();
-    const ql = q.toLowerCase();
-
-    if (/^(btc|bitcoin)$/i.test(ql) || /^(eth|ethereum|ether)$/i.test(ql))
-      return res.status(200).json(await analyze(q));
-
-    if (cgId?.trim()) {
-      const entry = lookupByCgId(cgId.trim());
-      if (!entry) return res.status(404).json({ error: `Coin not found: ${cgId}` });
-      return res.status(200).json(await analyzeEntry(entry, q));
-    }
-
-    const matches = coinLookupAll(q);
-    if (matches.length > 1) {
-      return res.status(200).json({
-        ambiguous: true, query: q,
-        matches: matches.map(m => ({
-          cgId: m.cgId, name: m.cgId.replace(/-/g, " "),
-          type: m.type, chain: m.chain || null,
-          contract: m.contract || null, aliases: m.aliases,
-        })),
-      });
-    }
-
-    return res.status(200).json(await analyze(q));
+    const data = await analyze(query.trim());
+    return res.status(200).json(data);
   } catch (err) {
     console.error("[analyze]", err.message);
     return res.status(500).json({ error: err.message });
@@ -127,76 +104,22 @@ async function analyze(query) {
 // ROUTING — detect what was entered and pick the right live data source
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function analyzeEntry(entry, originalQuery) {
-  if (entry.type === "NON-EVM") throw new Error(
-    `Currently only Bitcoin and EVM-based coins are supported. ` +
-    `"${originalQuery.toUpperCase()}" is a non-EVM coin. Support for other chains will be added shortly.`
-  );
-  if (entry.type === "BTC") return analyze("bitcoin");
-  const cgData = await fetchJSON(
-    `https://api.coingecko.com/api/v3/coins/${entry.cgId}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false`
-  ).catch(() => null);
-  const meta = {
-    name: cgData?.name || originalQuery,
-    ticker: cgData?.symbol?.toUpperCase() || originalQuery.toUpperCase(),
-    image: cgData?.image?.small || null,
-    price: cgData?.market_data?.current_price?.usd || null,
-    marketCap: cgData?.market_data?.market_cap?.usd || null,
-  };
-  const { coin, holders } = await fetchEVMTokenHolders(entry.contract, entry.chain, meta);
-  const classified = classifyHolders(holders);
-  const metrics    = computeMetrics(classified);
-  const score      = scoreHolderConcentration(metrics);
-  return {
-    coin,
-    holders: classified.all.slice(0, 20).map(h => ({ ...h, walletType: h._tag })),
-    metrics,
-    parameter: {
-      id: 1, name: "Holder Concentration", score,
-      rating: ratingLabel(score), color: ratingColor(score),
-      breakdown: buildBreakdown(metrics),
-      summary: buildSummary(coin.ticker, metrics, score),
-    },
-    upcoming: [
-      { id: 2, name: "Liquidity Depth",     score: null },
-      { id: 3, name: "Contract Audit",      score: null },
-      { id: 4, name: "Dev Wallet Activity", score: null },
-      { id: 5, name: "Market Cap / Volume", score: null },
-    ],
-  };
-}
-
 async function resolveHolders(query) {
   const q  = query.trim();
   const ql = q.toLowerCase();
 
+  // 0x contract address — straight to EVM handler, no CoinGecko
   if (/^0x[a-fA-F0-9]{40}$/.test(q)) return resolveEVMAddress(q);
-  if (/^(btc|bitcoin)$/i.test(ql))        return fetchBitcoinHolders();
+
+  // BTC shortcut — no CoinGecko needed
+  if (/^(btc|bitcoin)$/i.test(ql)) return fetchBitcoinHolders();
+
+  // ETH shortcut — no CoinGecko needed
   if (/^(eth|ethereum|ether)$/i.test(ql)) return fetchEthereumHolders();
 
-  const mapped = coinLookup(ql);
-  if (mapped) {
-    if (mapped.type === "NON-EVM") throw new Error(
-      `Currently only Bitcoin and EVM-based coins are supported. ` +
-      `"${q.toUpperCase()}" is a non-EVM coin. Support for other chains will be added shortly.`
-    );
-    if (mapped.type === "BTC") return fetchBitcoinHolders();
-    if (mapped.type === "EVM") {
-      const cgData = await cgMeta(mapped.cgId);
-      const meta = {
-        name:      cgData?.name || q,
-        ticker:    cgData?.symbol?.toUpperCase() || q.toUpperCase(),
-        image:     cgData?.image?.small || null,
-        price:     cgData?.market_data?.current_price?.usd || null,
-        marketCap: cgData?.market_data?.market_cap?.usd || null,
-      };
-      return fetchEVMTokenHolders(mapped.contract, mapped.chain, meta);
-    }
-  }
-
+  // Everything else — coinmap fast path or CoinGecko slow path
   return resolveByName(q);
 }
-
 // ─────────────────────────────────────────────────────────────────────────────
 // BITCOIN — Blockchain.com public richlist API (no key, always live)
 // Docs: https://www.blockchain.com/explorer/api/charts_api
@@ -1006,82 +929,45 @@ async function fetchEthplorerByAddress(address, meta = {}, chainHint = "ethereum
 }
 
 // Try Ethplorer (free, no key) → Moralis (free key) for any EVM token
-// ─────────────────────────────────────────────────────────────────────────────
-// COVALENT API — free tier, covers 20+ EVM chains
-// Sign up free at https://goldrush.dev (no credit card)
-// Add COVALENT_API_KEY to Vercel environment variables
-// Free tier: 100,000 credits/month — token holders = 1 credit per call
-// ─────────────────────────────────────────────────────────────────────────────
+// Covalent chain ID map — free tier at goldrush.dev
 const COVALENT_CHAIN_IDS = {
-  "eth":           1,
-  "bsc":           56,
-  "polygon":       137,
-  "avalanche":     43114,
-  "arbitrum":      42161,
-  "base":          8453,
-  "optimism":      10,
-  "fantom":        250,
-  "cronos":        25,
-  "gnosis":        100,
-  "celo":          42220,
-  "moonbeam":      1284,
-  "moonriver":     1285,
-  "aurora":        1313161554,
-  "metis":         1088,
-  "linea":         59144,
-  "scroll":        534352,
-  "blast":         81457,
-  "mantle":        5000,
-  "zksync":        324,
-  "kava":          2222,
-  "klaytn":        8217,
-  "harmony":       1666600000,
-  "astar":         592,
-  "arbitrum_nova": 42170,
-  "polygon_zkevm": 1101,
-  "mode":          34443,
-  "manta":         169,
+  "eth":           1,       "bsc":       56,      "polygon":   137,
+  "avalanche":     43114,   "arbitrum":  42161,   "base":      8453,
+  "optimism":      10,      "fantom":    250,      "cronos":    25,
+  "gnosis":        100,     "celo":      42220,   "moonbeam":  1284,
+  "moonriver":     1285,    "aurora":    1313161554, "metis":   1088,
+  "linea":         59144,   "scroll":    534352,  "blast":     81457,
+  "mantle":        5000,    "zksync":    324,      "kava":      2222,
+  "klaytn":        8217,    "harmony":   1666600000, "astar":  592,
+  "arbitrum_nova": 42170,   "polygon_zkevm": 1101, "mode":    34443,
+  "manta":         169,     "taiko":     167000,  "fraxtal":   252,
 };
 
 async function fetchCovalentHolders(address, chain, meta = {}) {
   const KEY     = process.env.COVALENT_API_KEY;
   if (!KEY) throw new Error("COVALENT_API_KEY not set");
-
   const chainId = COVALENT_CHAIN_IDS[chain];
-  if (!chainId) throw new Error(`Chain "${chain}" not in Covalent chain map`);
-
+  if (!chainId) throw new Error(`Chain "${chain}" not in Covalent map`);
   const chainLabel = CHAIN_LABELS[chain] || chain;
   const url = `https://api.covalenthq.com/v1/${chainId}/tokens/${address}/token_holders/?page-size=100&page-number=0`;
-  const r   = await fetch(url, {
-    headers: { "Authorization": `Bearer ${KEY}`, "Accept": "application/json" }
-  });
+  const r   = await fetch(url, { headers: { "Authorization": `Bearer ${KEY}`, "Accept": "application/json" } });
   if (!r.ok) throw new Error(`Covalent HTTP ${r.status}`);
   const d = await r.json();
   if (d.error) throw new Error(`Covalent: ${d.error_message || d.error_code}`);
-
   const items = d?.data?.items || [];
   if (!items.length) throw new Error("Covalent returned 0 holders");
-
-  const decimals    = d?.data?.items?.[0]?.contract_decimals ?? 18;
+  const decimals    = items[0]?.contract_decimals ?? 18;
   const totalSupply = items.reduce((s, h) => s + parseFloat(h.balance || 0), 0);
-
   const holders = items.slice(0, 50).map(h => {
     const bal = parseFloat(h.balance || 0);
     const pct = totalSupply > 0 ? parseFloat(((bal / totalSupply) * 100).toFixed(4)) : 0;
     const fmt = (bal / Math.pow(10, decimals)).toLocaleString(undefined, { maximumFractionDigits: 2 }) + " tokens";
-    return {
-      address:    h.address,
-      percentage: pct,
-      balance:    fmt,
-      label:      null, entity: null, isContract: false,
-      chain,
-    };
+    return { address: h.address, percentage: pct, balance: fmt, label: null, entity: null, isContract: false, chain };
   });
-
   return {
     coin: {
-      name:       meta.name   || d?.data?.contract_name                   || "Unknown Token",
-      ticker:     meta.ticker || d?.data?.contract_ticker_symbol          || address.slice(0, 6).toUpperCase(),
+      name:       meta.name   || d?.data?.contract_name || "Unknown Token",
+      ticker:     meta.ticker || d?.data?.contract_ticker_symbol || address.slice(0,6).toUpperCase(),
       address, chain, chainLabel,
       source:     `Covalent API (live) — ${chainLabel}`,
       ...meta,
@@ -1090,13 +976,11 @@ async function fetchCovalentHolders(address, chain, meta = {}) {
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// EVM TOKEN CASCADE — Ethplorer → Covalent → Moralis → clear message
-// ─────────────────────────────────────────────────────────────────────────────
+// EVM TOKEN CASCADE: Ethplorer → Covalent → Moralis
 async function fetchEVMTokenHolders(address, chain, meta = {}) {
   const chainLabel = CHAIN_LABELS[chain] || chain;
 
-  // 1. Ethplorer — free, no key, covers ETH + BSC
+  // 1. Ethplorer — free, no key, covers ETH + BSC reliably
   if (chain === "eth" || chain === "bsc") {
     try {
       return await fetchEthplorerByAddress(address, meta, chain === "bsc" ? "bsc" : "ethereum");
@@ -1105,29 +989,21 @@ async function fetchEVMTokenHolders(address, chain, meta = {}) {
     }
   }
 
-  // 2. Covalent — free key (goldrush.dev), covers 20+ chains
+  // 2. Covalent — free key (goldrush.dev), covers 25+ chains
   try {
     return await fetchCovalentHolders(address, chain, meta);
   } catch (e) {
-    if (e.message.includes("COVALENT_API_KEY not set")) {
-      console.warn("[Covalent] key not set — trying Moralis");
-    } else {
-      console.warn(`[Covalent] ${e.message} — trying Moralis`);
-    }
+    console.warn(`[Covalent] ${e.message} — trying Moralis`);
   }
 
-  // 3. Moralis — fallback (free key from moralis.io, getTokenOwners may need paid plan)
+  // 3. Moralis — fallback
   try {
     return await fetchMoralisHolders(address, chain, meta);
   } catch (e) {
-    if (e.message.includes("MORALIS_API_KEY not set")) {
-      console.warn("[Moralis] key not set");
-    } else {
-      console.warn(`[Moralis] ${e.message}`);
-    }
+    console.warn(`[Moralis] ${e.message}`);
   }
 
-  // 4. All providers failed — clear message
+  // 4. All failed — clear message
   throw new Error(
     `Currently only Bitcoin and Ethereum ERC-20 tokens are fully supported. ` +
     `Holder data for ${meta.name || address} on ${chainLabel} is not yet available. ` +

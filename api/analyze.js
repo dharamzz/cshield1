@@ -53,40 +53,29 @@ export default async function handler(req, res) {
     const q  = query.trim();
     const ql = q.toLowerCase();
 
-    // BTC and ETH are always unambiguous — skip disambiguation entirely
-    if (/^(btc|bitcoin)$/i.test(ql) || /^(eth|ethereum|ether)$/i.test(ql)) {
-      const data = await analyze(q);
-      return res.status(200).json(data);
-    }
+    if (/^(btc|bitcoin)$/i.test(ql) || /^(eth|ethereum|ether)$/i.test(ql))
+      return res.status(200).json(await analyze(q));
 
-    // User already picked a specific coin from the disambiguation picker
     if (cgId?.trim()) {
       const entry = lookupByCgId(cgId.trim());
       if (!entry) return res.status(404).json({ error: `Coin not found: ${cgId}` });
-      const data = await analyzeEntry(entry, q);
-      return res.status(200).json(data);
+      return res.status(200).json(await analyzeEntry(entry, q));
     }
 
-    // Check for ambiguous match (multiple coins share this ticker/name)
     const matches = coinLookupAll(q);
     if (matches.length > 1) {
       return res.status(200).json({
         ambiguous: true,
         query: q,
         matches: matches.map(m => ({
-          cgId:     m.cgId,
-          name:     m.cgId.replace(/-/g, " "),
-          type:     m.type,
-          chain:    m.chain    || null,
-          contract: m.contract || null,
-          aliases:  m.aliases,
+          cgId: m.cgId, name: m.cgId.replace(/-/g, " "),
+          type: m.type, chain: m.chain || null,
+          contract: m.contract || null, aliases: m.aliases,
         })),
       });
     }
 
-    // Single or zero matches — normal flow
-    const data = await analyze(q);
-    return res.status(200).json(data);
+    return res.status(200).json(await analyze(q));
   } catch (err) {
     console.error("[analyze]", err.message);
     return res.status(500).json({ error: err.message });
@@ -139,45 +128,39 @@ async function analyze(query) {
 // ROUTING — detect what was entered and pick the right live data source
 // ─────────────────────────────────────────────────────────────────────────────
 
-// analyzeEntry — run full analysis for a specific coinmap entry (post-disambiguation)
 async function analyzeEntry(entry, originalQuery) {
-  if (entry.type === "NON-EVM") {
-    throw new Error(
-      `Currently only Bitcoin and EVM-based coins are supported. ` +
-      `"${originalQuery.toUpperCase()}" is a non-EVM coin. Support for other chains will be added shortly.`
-    );
-  }
+  if (entry.type === "NON-EVM") throw new Error(
+    `Currently only Bitcoin and EVM-based coins are supported. ` +
+    `"${originalQuery.toUpperCase()}" is a non-EVM coin. Support for other chains will be added shortly.`
+  );
   if (entry.type === "BTC") return analyze("bitcoin");
-
   const cgData = await fetchJSON(
     `https://api.coingecko.com/api/v3/coins/${entry.cgId}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false`
   ).catch(() => null);
   const meta = {
-    name:      cgData?.name                            || originalQuery,
-    ticker:    cgData?.symbol?.toUpperCase()           || originalQuery.toUpperCase(),
-    image:     cgData?.image?.small                    || null,
-    price:     cgData?.market_data?.current_price?.usd || null,
-    marketCap: cgData?.market_data?.market_cap?.usd    || null,
+    name: cgData?.name || originalQuery,
+    ticker: cgData?.symbol?.toUpperCase() || originalQuery.toUpperCase(),
+    image: cgData?.image?.small || null,
+    price: cgData?.market_data?.current_price?.usd || null,
+    marketCap: cgData?.market_data?.market_cap?.usd || null,
   };
-
   const { coin, holders } = await fetchEVMTokenHolders(entry.contract, entry.chain, meta);
   const classified = classifyHolders(holders);
-  const metrics    = computeMetrics(classified);
-  const score      = scoreHolderConcentration(metrics);
+  const metrics = computeMetrics(classified);
+  const score = scoreHolderConcentration(metrics);
   return {
     coin,
     holders: classified.all.slice(0, 20).map(h => ({ ...h, walletType: h._tag })),
     metrics,
     parameter: {
       id: 1, name: "Holder Concentration", score,
-      rating:    ratingLabel(score),
-      color:     ratingColor(score),
+      rating: ratingLabel(score), color: ratingColor(score),
       breakdown: buildBreakdown(metrics),
-      summary:   buildSummary(coin.ticker, metrics, score),
+      summary: buildSummary(coin.ticker, metrics, score),
     },
     upcoming: [
-      { id: 2, name: "Liquidity Depth",     score: null },
-      { id: 3, name: "Contract Audit",      score: null },
+      { id: 2, name: "Liquidity Depth", score: null },
+      { id: 3, name: "Contract Audit", score: null },
       { id: 4, name: "Dev Wallet Activity", score: null },
       { id: 5, name: "Market Cap / Volume", score: null },
     ],
@@ -1009,26 +992,19 @@ async function fetchEthplorerByAddress(address, meta = {}, chainHint = "ethereum
 }
 
 // Try Ethplorer (free, no key) → Moralis (free key) for any EVM token
-// Maps coinmap chain IDs → Moralis chain IDs where they differ
+// Chain ID remapping — some chains need different IDs for Moralis API
 const MORALIS_CHAIN_REMAP = {
-  "polygon_zkevm": "polygon zkevm",
+  "polygon_zkevm": "0x44d",
   "arbitrum_nova": "arbitrum nova",
+  "scroll":        "0x82750",
+  "blast":         "0x13e31",
 };
-
-// Chains confirmed supported by Moralis free tier
-// Anything NOT in this set returns a clear message instead of HTTP 400
-const MORALIS_SUPPORTED = new Set([
-  "eth", "bsc", "polygon", "avalanche", "arbitrum", "base", "optimism",
-  "fantom", "cronos", "linea", "gnosis", "celo", "moonbeam", "moonriver",
-  "aurora", "scroll", "mantle", "zksync", "pulse", "harmony", "metis",
-  "kava", "polygon zkevm", "arbitrum nova", "klaytn",
-]);
 
 async function fetchEVMTokenHolders(address, moralisChain, meta = {}) {
   const remapped   = MORALIS_CHAIN_REMAP[moralisChain] || moralisChain;
   const chainLabel = CHAIN_LABELS[moralisChain] || moralisChain;
 
-  // Ethplorer covers ETH + BSC — try first (free, no key needed)
+  // Ethplorer for ETH + BSC (free, no key needed)
   if (remapped === "eth" || remapped === "bsc") {
     try {
       return await fetchEthplorerByAddress(address, meta, remapped === "bsc" ? "bsc" : "ethereum");
@@ -1037,29 +1013,26 @@ async function fetchEVMTokenHolders(address, moralisChain, meta = {}) {
     }
   }
 
-  // Chain not supported by Moralis — return clear message instead of HTTP 400
-  if (!MORALIS_SUPPORTED.has(remapped)) {
-    throw new Error(
-      `Holder data for ${meta.name || address} on ${chainLabel} is not yet available. ` +
-      `${chainLabel} is not currently supported by the Moralis API.`
-    );
-  }
-
-  // Moralis for all other supported EVM chains
+  // Try Moralis — if it fails for ANY reason (400, unsupported chain, no key, etc.)
+  // show the same clean "not supported" message instead of a confusing error
   try {
     return await fetchMoralisHolders(address, remapped, meta);
   } catch (e) {
+    // Moralis key missing — give actionable message
     if (e.message.includes("MORALIS_API_KEY not set")) {
       throw new Error(
         `Holder data for this token on ${chainLabel} requires a free Moralis API key. ` +
-        `Sign up at moralis.io (free, no credit card) and add MORALIS_API_KEY to your Vercel environment variables.`
+        `Sign up at moralis.io and add MORALIS_API_KEY to your Vercel environment variables.`
       );
     }
-    if (remapped !== "eth" && remapped !== "bsc") {
-      try { return await fetchEthplorerByAddress(address, meta, moralisChain); } catch (_) {}
-    }
+    // Try Ethplorer as last resort (occasionally covers non-ETH chains)
+    try { return await fetchEthplorerByAddress(address, meta, moralisChain); } catch (_) {}
+
+    // Any other failure — show clean unsupported message
     throw new Error(
-      `Could not fetch holders for ${meta.name || address} on ${chainLabel}. ${e.message}`
+      `Currently only Bitcoin and EVM-based coins are supported. ` +
+      `Holder data for ${meta.name || address} on ${chainLabel} is not yet available. ` +
+      `Support for additional chains will be added shortly.`
     );
   }
 }

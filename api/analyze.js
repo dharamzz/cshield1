@@ -53,20 +53,22 @@ export default async function handler(req, res) {
     const q  = query.trim();
     const ql = q.toLowerCase();
 
+    // BTC and ETH — always unambiguous, skip disambiguation
     if (/^(btc|bitcoin)$/i.test(ql) || /^(eth|ethereum|ether)$/i.test(ql))
       return res.status(200).json(await analyze(q));
 
+    // User already picked from disambiguation picker
     if (cgId?.trim()) {
       const entry = lookupByCgId(cgId.trim());
       if (!entry) return res.status(404).json({ error: `Coin not found: ${cgId}` });
       return res.status(200).json(await analyzeEntry(entry, q));
     }
 
+    // Check for ambiguous match
     const matches = coinLookupAll(q);
     if (matches.length > 1) {
       return res.status(200).json({
-        ambiguous: true,
-        query: q,
+        ambiguous: true, query: q,
         matches: matches.map(m => ({
           cgId: m.cgId, name: m.cgId.replace(/-/g, " "),
           type: m.type, chain: m.chain || null,
@@ -138,16 +140,16 @@ async function analyzeEntry(entry, originalQuery) {
     `https://api.coingecko.com/api/v3/coins/${entry.cgId}?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false`
   ).catch(() => null);
   const meta = {
-    name: cgData?.name || originalQuery,
-    ticker: cgData?.symbol?.toUpperCase() || originalQuery.toUpperCase(),
-    image: cgData?.image?.small || null,
-    price: cgData?.market_data?.current_price?.usd || null,
+    name:      cgData?.name || originalQuery,
+    ticker:    cgData?.symbol?.toUpperCase() || originalQuery.toUpperCase(),
+    image:     cgData?.image?.small || null,
+    price:     cgData?.market_data?.current_price?.usd || null,
     marketCap: cgData?.market_data?.market_cap?.usd || null,
   };
   const { coin, holders } = await fetchEVMTokenHolders(entry.contract, entry.chain, meta);
   const classified = classifyHolders(holders);
-  const metrics = computeMetrics(classified);
-  const score = scoreHolderConcentration(metrics);
+  const metrics    = computeMetrics(classified);
+  const score      = scoreHolderConcentration(metrics);
   return {
     coin,
     holders: classified.all.slice(0, 20).map(h => ({ ...h, walletType: h._tag })),
@@ -159,8 +161,8 @@ async function analyzeEntry(entry, originalQuery) {
       summary: buildSummary(coin.ticker, metrics, score),
     },
     upcoming: [
-      { id: 2, name: "Liquidity Depth", score: null },
-      { id: 3, name: "Contract Audit", score: null },
+      { id: 2, name: "Liquidity Depth",     score: null },
+      { id: 3, name: "Contract Audit",      score: null },
       { id: 4, name: "Dev Wallet Activity", score: null },
       { id: 5, name: "Market Cap / Volume", score: null },
     ],
@@ -171,16 +173,43 @@ async function resolveHolders(query) {
   const q  = query.trim();
   const ql = q.toLowerCase();
 
-  // 0x contract address — straight to EVM handler, no CoinGecko
+  // 0x contract address — straight to EVM handler
   if (/^0x[a-fA-F0-9]{40}$/.test(q)) return resolveEVMAddress(q);
 
-  // BTC shortcut — no CoinGecko needed
+  // BTC shortcut
   if (/^(btc|bitcoin)$/i.test(ql)) return fetchBitcoinHolders();
 
-  // ETH shortcut — no CoinGecko needed
+  // ETH shortcut
   if (/^(eth|ethereum|ether)$/i.test(ql)) return fetchEthereumHolders();
 
-  // Everything else — coinmap fast path or CoinGecko slow path
+  // Coinmap lookup — check type FIRST before any API calls
+  const mapped = coinLookup(ql);
+  if (mapped) {
+    // NON-EVM — return unsupported message immediately, zero API calls
+    if (mapped.type === "NON-EVM") {
+      throw new Error(
+        `Currently only Bitcoin and EVM-based coins are supported. ` +
+        `"${q.toUpperCase()}" is a non-EVM coin. Support for other chains will be added shortly.`
+      );
+    }
+    // BTC
+    if (mapped.type === "BTC") return fetchBitcoinHolders();
+
+    // EVM — fetch metadata then holders
+    if (mapped.type === "EVM") {
+      const cgData = await cgMeta(mapped.cgId);
+      const meta = {
+        name:      cgData?.name || q,
+        ticker:    cgData?.symbol?.toUpperCase() || q.toUpperCase(),
+        image:     cgData?.image?.small || null,
+        price:     cgData?.market_data?.current_price?.usd || null,
+        marketCap: cgData?.market_data?.market_cap?.usd || null,
+      };
+      return fetchEVMTokenHolders(mapped.contract, mapped.chain, meta);
+    }
+  }
+
+  // Not in coinmap — fall through to CoinGecko
   return resolveByName(q);
 }
 // ─────────────────────────────────────────────────────────────────────────────
@@ -992,49 +1021,47 @@ async function fetchEthplorerByAddress(address, meta = {}, chainHint = "ethereum
 }
 
 // Try Ethplorer (free, no key) → Moralis (free key) for any EVM token
-// Chain ID remapping — some chains need different IDs for Moralis API
-const MORALIS_CHAIN_REMAP = {
-  "polygon_zkevm": "0x44d",
-  "arbitrum_nova": "arbitrum nova",
-  "scroll":        "0x82750",
-  "blast":         "0x13e31",
-};
+// EVM chains supported by Ethplorer (free, no key needed)
+const ETHPLORER_CHAINS = new Set(["eth", "ethereum", "bsc"]);
 
-async function fetchEVMTokenHolders(address, moralisChain, meta = {}) {
-  const remapped   = MORALIS_CHAIN_REMAP[moralisChain] || moralisChain;
-  const chainLabel = CHAIN_LABELS[moralisChain] || moralisChain;
+// EVM chains supported by Moralis free tier
+// NOTE: getTokenOwners requires paid Moralis plan.
+// Only ETH and BSC are reliably available via Ethplorer for free.
+// All other EVM chains show "not yet available" until a paid provider is configured.
+const MORALIS_CHAINS = new Set([
+  "polygon", "avalanche", "arbitrum", "base", "optimism",
+  "fantom", "cronos", "linea", "gnosis", "celo",
+  "moonbeam", "moonriver", "aurora", "scroll", "blast",
+  "mantle", "zksync", "pulse", "harmony", "metis", "kava", "klaytn",
+]);
 
-  // Ethplorer for ETH + BSC (free, no key needed)
-  if (remapped === "eth" || remapped === "bsc") {
-    try {
-      return await fetchEthplorerByAddress(address, meta, remapped === "bsc" ? "bsc" : "ethereum");
-    } catch (e) {
-      console.warn(`[Ethplorer] ${e.message} — trying Moralis`);
+async function fetchEVMTokenHolders(address, chain, meta = {}) {
+  const chainLabel = CHAIN_LABELS[chain] || chain;
+
+  // ETH and BSC — use Ethplorer (free, reliable)
+  if (ETHPLORER_CHAINS.has(chain)) {
+    return fetchEthplorerByAddress(address, meta, chain === "bsc" ? "bsc" : "ethereum");
+  }
+
+  // Other EVM chains — try Moralis (requires MORALIS_API_KEY + paid plan for getTokenOwners)
+  if (MORALIS_CHAINS.has(chain)) {
+    const KEY = process.env.MORALIS_API_KEY;
+    if (KEY) {
+      try {
+        return await fetchMoralisHolders(address, chain, meta);
+      } catch (e) {
+        console.warn(`[Moralis] ${chain}: ${e.message}`);
+        // Fall through to unsupported message
+      }
     }
   }
 
-  // Try Moralis — if it fails for ANY reason (400, unsupported chain, no key, etc.)
-  // show the same clean "not supported" message instead of a confusing error
-  try {
-    return await fetchMoralisHolders(address, remapped, meta);
-  } catch (e) {
-    // Moralis key missing — give actionable message
-    if (e.message.includes("MORALIS_API_KEY not set")) {
-      throw new Error(
-        `Holder data for this token on ${chainLabel} requires a free Moralis API key. ` +
-        `Sign up at moralis.io and add MORALIS_API_KEY to your Vercel environment variables.`
-      );
-    }
-    // Try Ethplorer as last resort (occasionally covers non-ETH chains)
-    try { return await fetchEthplorerByAddress(address, meta, moralisChain); } catch (_) {}
-
-    // Any other failure — show clean unsupported message
-    throw new Error(
-      `Currently only Bitcoin and EVM-based coins are supported. ` +
-      `Holder data for ${meta.name || address} on ${chainLabel} is not yet available. ` +
-      `Support for additional chains will be added shortly.`
-    );
-  }
+  // Chain not supported or all providers failed — clear message
+  throw new Error(
+    `Currently only Bitcoin and Ethereum-based (ERC-20) coins are fully supported. ` +
+    `Holder data for ${meta.name || address} on ${chainLabel} is not yet available. ` +
+    `Support for additional EVM chains will be added shortly.`
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

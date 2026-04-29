@@ -1058,34 +1058,54 @@ async function fetchExplorerHolders(address, chain, meta = {}) {
   const chainLabel = CHAIN_LABELS[chain] || chain;
 
   if (config.blockscout) {
-    // Blockscout v2 REST API
-    // HTTP 422 = token contract not indexed on this chain (wrong chain or not a tracked ERC-20)
-    // The holders endpoint uses ?limit= on newer instances, page-based cursor on others
-    const holdersUrl = `${config.base}/api/v2/tokens/${address}/holders?limit=50`;
-    const r = await fetch(holdersUrl, { headers: { Accept: "application/json" } });
-    if (r.status === 422) {
-      // Try the token info endpoint to get a better error message
-      const infoR = await fetch(`${config.base}/api/v2/tokens/${address}`, { headers: { Accept: "application/json" } }).catch(() => null);
-      if (!infoR?.ok) throw new Error(`Token not found or not indexed on ${chainLabel}. Verify the contract address belongs to this chain.`);
-      throw new Error(`Blockscout: holder list unavailable for this token on ${chainLabel} (422)`);
+    // Strategy: try Blockscout v2 REST first; if it returns 422 (requires checksummed address
+    // on some instances), fall back to the Etherscan-compatible RPC endpoint which accepts
+    // lowercase addresses and is supported on all Blockscout instances.
+    const v2Url  = `${config.base}/api/v2/tokens/${address}/holders?limit=50`;
+    const rpcUrl = `${config.base}/api?module=token&action=getTokenHolders&contractaddress=${address}&page=1&offset=50`;
+
+    let items = null;
+    let source = `${chainLabel} Blockscout (live)`;
+
+    // Try v2 first
+    const r = await fetch(v2Url, { headers: { Accept: "application/json" } });
+    if (r.ok) {
+      const d = await r.json();
+      const raw = d.items || [];
+      if (raw.length) {
+        items = raw.map(h => ({
+          address: h.address?.hash || h.address,
+          value:   parseFloat(h.value || 0),
+        }));
+      }
     }
-    if (!r.ok) throw new Error(`Blockscout HTTP ${r.status}`);
-    const d = await r.json();
-    const items = d.items || [];
-    if (!items.length) throw new Error("Blockscout returned 0 holders — token may be too new or not yet indexed");
-    const total = items.reduce((s, h) => s + parseFloat(h.value || 0), 0);
+
+    // Fall back to RPC endpoint if v2 failed (422 = checksum issue, or any other non-OK)
+    if (!items) {
+      const rr = await fetch(rpcUrl, { headers: { Accept: "application/json" } });
+      if (!rr.ok) throw new Error(`Blockscout HTTP ${rr.status}`);
+      const dd = await rr.json();
+      if (dd.status === "0") throw new Error(`Blockscout RPC: ${dd.message} — ${dd.result}`);
+      const raw = dd.result || [];
+      if (!raw.length) throw new Error("Blockscout returned 0 holders — token may not be indexed on this chain");
+      items = raw.map(h => ({
+        address: h.address,
+        value:   parseFloat(h.value || 0),
+      }));
+      source = `${chainLabel} Blockscout RPC (live)`;
+    }
+
+    if (!items?.length) throw new Error("Blockscout returned 0 holders — token may not be indexed on this chain");
+    const total = items.reduce((s, h) => s + h.value, 0);
     return {
       coin: { name:meta.name||"Unknown Token", ticker:meta.ticker||address.slice(0,6).toUpperCase(),
-              address, chain, chainLabel, source:`${chainLabel} Explorer (live)`, ...meta },
-      holders: items.slice(0,50).map(h => {
-        const bal = parseFloat(h.value || 0);
-        return {
-          address:    h.address?.hash || h.address,
-          percentage: total>0 ? parseFloat(((bal/total)*100).toFixed(4)) : 0,
-          balance:    bal.toLocaleString(undefined,{maximumFractionDigits:2})+" tokens",
-          label:null, entity:null, isContract:false, chain,
-        };
-      }),
+              address, chain, chainLabel, source, ...meta },
+      holders: items.slice(0,50).map(h => ({
+        address:    h.address,
+        percentage: total>0 ? parseFloat(((h.value/total)*100).toFixed(4)) : 0,
+        balance:    h.value.toLocaleString(undefined,{maximumFractionDigits:2})+" tokens",
+        label:null, entity:null, isContract:false, chain,
+      })),
     };
   } else {
     // Etherscan format — one key covers all chains

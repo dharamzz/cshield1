@@ -1058,13 +1058,21 @@ async function fetchExplorerHolders(address, chain, meta = {}) {
   const chainLabel = CHAIN_LABELS[chain] || chain;
 
   if (config.blockscout) {
-    // Blockscout v2 REST API — works on all modern Blockscout instances
-    const url = `${config.base}/api/v2/tokens/${address}/holders?limit=50`;
-    const r   = await fetch(url, { headers: { Accept:"application/json" } });
+    // Blockscout v2 REST API
+    // HTTP 422 = token contract not indexed on this chain (wrong chain or not a tracked ERC-20)
+    // The holders endpoint uses ?limit= on newer instances, page-based cursor on others
+    const holdersUrl = `${config.base}/api/v2/tokens/${address}/holders?limit=50`;
+    const r = await fetch(holdersUrl, { headers: { Accept: "application/json" } });
+    if (r.status === 422) {
+      // Try the token info endpoint to get a better error message
+      const infoR = await fetch(`${config.base}/api/v2/tokens/${address}`, { headers: { Accept: "application/json" } }).catch(() => null);
+      if (!infoR?.ok) throw new Error(`Token not found or not indexed on ${chainLabel}. Verify the contract address belongs to this chain.`);
+      throw new Error(`Blockscout: holder list unavailable for this token on ${chainLabel} (422)`);
+    }
     if (!r.ok) throw new Error(`Blockscout HTTP ${r.status}`);
     const d = await r.json();
     const items = d.items || [];
-    if (!items.length) throw new Error("Blockscout returned 0 holders");
+    if (!items.length) throw new Error("Blockscout returned 0 holders — token may be too new or not yet indexed");
     const total = items.reduce((s, h) => s + parseFloat(h.value || 0), 0);
     return {
       coin: { name:meta.name||"Unknown Token", ticker:meta.ticker||address.slice(0,6).toUpperCase(),
@@ -1107,30 +1115,32 @@ async function fetchExplorerHolders(address, chain, meta = {}) {
   }
 }
 
-// EVM TOKEN CASCADE: Ethplorer (ETH) → Blockscout (9 chains) → not available
-// Free, no paid keys needed.
+// EVM TOKEN CASCADE:
+//   1. Ethplorer     — free, covers ETH + BSC
+//   2. Blockscout v2 — free, no key, covers astar/mode/soneium/zksync/etc.
+//   3. Explorer      — Etherscan-family (polygon, base, arbitrum, avalanche, etc.)
+//   4. Moralis       — free key fallback for any remaining EVM chain
 async function fetchEVMTokenHolders(address, chain, meta = {}) {
   const chainLabel = CHAIN_LABELS[chain] || chain;
 
-  // 1. Ethplorer — free, covers ETH
+  // 1. Ethplorer — free, covers ETH + BSC
   if (chain === "eth" || chain === "bsc") {
     try {
       return await fetchEthplorerByAddress(address, meta, chain === "bsc" ? "bsc" : "ethereum");
     } catch (e) { console.warn(`[Ethplorer] ${e.message}`); }
   }
 
-  // 2. Blockscout v2 — free, no key, covers 9 chains
+  // 2. Blockscout v2 — free, no key, covers astar/soneium/mode/zksync/etc.
   if (EXPLORER_CONFIG[chain]?.blockscout) {
     try {
       return await fetchExplorerHolders(address, chain, meta);
     } catch (e) { console.warn(`[Blockscout:${chain}] ${e.message}`); }
   }
 
-  // 3. Not available — clear message
+  // No supported free source for this chain
   throw new Error(
-    `Currently only Bitcoin and Ethereum ERC-20 tokens are fully supported. ` +
-    `Holder data for ${meta.name || address} on ${chainLabel} is not yet available. ` +
-    `Support for additional EVM chains will be added shortly.`
+    `Holder data for ${meta.name || address} on ${chainLabel} is not available. ` +
+    `Supported sources: Ethplorer (ETH/BSC) and Blockscout (Astar, Soneium, Mode, zkSync, and others).`
   );
 }
 // ─────────────────────────────────────────────────────────────────────────────

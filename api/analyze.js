@@ -1040,7 +1040,7 @@ const EXPLORER_CONFIG = {
   "taiko":         { url:"https://api.taikoscan.io/api",                     key:E_KEY },
   "fraxtal":       { url:"https://api.fraxscan.com/api",                     key:E_KEY },
   "apechain":      { url:"https://api.apescan.io/api",                       key:E_KEY },
-  // Blockscout v2 API — no key needed, uses /api/v2/tokens/{address}/holders
+  // Blockscout-based — no key needed
   "astar":         { base:"https://astar.blockscout.com",                    key:null, blockscout:true },
   "mode":          { base:"https://explorer.mode.network",                   key:null, blockscout:true },
   "manta":         { base:"https://pacific-explorer.manta.network",          key:null, blockscout:true },
@@ -1058,22 +1058,21 @@ async function fetchExplorerHolders(address, chain, meta = {}) {
   const chainLabel = CHAIN_LABELS[chain] || chain;
 
   if (config.blockscout) {
-    // Blockscout v2 REST API — /api/v2/tokens/{address}/holders
+    // Blockscout v2 REST API — works on all modern Blockscout instances
     const url = `${config.base}/api/v2/tokens/${address}/holders?limit=50`;
     const r   = await fetch(url, { headers: { Accept:"application/json" } });
     if (!r.ok) throw new Error(`Blockscout HTTP ${r.status}`);
     const d = await r.json();
-    // v2 returns { items: [...], next_page_params: ... }
-    const items = d.items || d.result || [];
+    const items = d.items || [];
     if (!items.length) throw new Error("Blockscout returned 0 holders");
-    const total = items.reduce((s, h) => s + parseFloat(h.value || h.balance || 0), 0);
+    const total = items.reduce((s, h) => s + parseFloat(h.value || 0), 0);
     return {
       coin: { name:meta.name||"Unknown Token", ticker:meta.ticker||address.slice(0,6).toUpperCase(),
               address, chain, chainLabel, source:`${chainLabel} Explorer (live)`, ...meta },
       holders: items.slice(0,50).map(h => {
-        const bal = parseFloat(h.value || h.balance || 0);
+        const bal = parseFloat(h.value || 0);
         return {
-          address:    h.address?.hash || h.address || h.holder_address,
+          address:    h.address?.hash || h.address,
           percentage: total>0 ? parseFloat(((bal/total)*100).toFixed(4)) : 0,
           balance:    bal.toLocaleString(undefined,{maximumFractionDigits:2})+" tokens",
           label:null, entity:null, isContract:false, chain,

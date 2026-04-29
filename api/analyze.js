@@ -53,18 +53,18 @@ export default async function handler(req, res) {
     const q  = query.trim();
     const ql = q.toLowerCase();
 
-    // BTC and ETH always unambiguous — skip disambiguation
+    // BTC and ETH always unambiguous
     if (/^(btc|bitcoin)$/i.test(ql) || /^(eth|ethereum|ether)$/i.test(ql))
       return res.status(200).json(await analyze(q));
 
-    // User picked a specific coin from disambiguation picker
+    // User picked from disambiguation picker
     if (cgId?.trim()) {
       const entry = lookupByCgId(cgId.trim());
       if (!entry) return res.status(404).json({ error: `Coin not found: ${cgId}` });
       return res.status(200).json(await analyzeEntry(entry, q));
     }
 
-    // Check for ambiguous match (multiple coins share same ticker/name)
+    // Check for ambiguous match
     const matches = coinLookupAll(q);
     if (matches.length > 1) {
       return res.status(200).json({
@@ -130,7 +130,6 @@ async function analyze(query) {
 // ROUTING — detect what was entered and pick the right live data source
 // ─────────────────────────────────────────────────────────────────────────────
 
-// analyzeEntry — run full analysis for a specific coinmap entry (post-disambiguation)
 async function analyzeEntry(entry, originalQuery) {
   if (entry.type === "NON-EVM") throw new Error(
     `Currently only Bitcoin and EVM-based coins are supported. ` +
@@ -174,10 +173,7 @@ async function resolveHolders(query) {
   const q  = query.trim();
   const ql = q.toLowerCase();
 
-  // 0x contract address — straight to EVM handler
   if (/^0x[a-fA-F0-9]{40}$/.test(q)) return resolveEVMAddress(q);
-
-  // Native shortcuts — no CoinGecko needed
   if (/^(btc|bitcoin)$/i.test(ql))        return fetchBitcoinHolders();
   if (/^(eth|ethereum|ether)$/i.test(ql)) return fetchEthereumHolders();
 
@@ -202,7 +198,6 @@ async function resolveHolders(query) {
     }
   }
 
-  // Not in coinmap — fall through to CoinGecko
   return resolveByName(q);
 }
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1014,72 +1009,159 @@ async function fetchEthplorerByAddress(address, meta = {}, chainHint = "ethereum
 }
 
 // Try Ethplorer (free, no key) → Moralis (free key) for any EVM token
-// Covalent chain ID map — free tier at goldrush.dev (no credit card)
-const COVALENT_CHAIN_IDS = {
-  "eth":1, "bsc":56, "polygon":137, "avalanche":43114, "arbitrum":42161,
-  "base":8453, "optimism":10, "fantom":250, "cronos":25, "gnosis":100,
-  "celo":42220, "moonbeam":1284, "moonriver":1285, "aurora":1313161554,
-  "metis":1088, "linea":59144, "scroll":534352, "blast":81457, "mantle":5000,
-  "zksync":324, "kava":2222, "klaytn":8217, "harmony":1666600000, "astar":592,
-  "arbitrum_nova":42170, "polygon_zkevm":1101, "mode":34443, "manta":169,
-  "taiko":167000, "fraxtal":252,
+// ─────────────────────────────────────────────────────────────────────────────
+// BLOCK EXPLORER APIs — Etherscan-compatible, all free
+// Each chain has its own explorer. Same API format, different base URL.
+// Keys are FREE — sign up once at each explorer site.
+//
+// Set these in Vercel Environment Variables:
+//   ETHERSCAN_KEY    — etherscan.io          (ETH)
+//   BSCSCAN_KEY      — bscscan.com           (BSC)
+//   POLYGONSCAN_KEY  — polygonscan.com       (Polygon)
+//   ARBISCAN_KEY     — arbiscan.io           (Arbitrum)
+//   BASESCAN_KEY     — basescan.org          (Base)
+//   OPTIMISM_KEY     — optimistic.etherscan.io (Optimism)
+//   SNOWTRACE_KEY    — snowtrace.io          (Avalanche)
+//   FTMSCAN_KEY      — ftmscan.com           (Fantom)
+//   LINEASCAN_KEY    — lineascan.build       (Linea)
+//   SCROLLSCAN_KEY   — scrollscan.com        (Scroll)
+//   BLASTSCAN_KEY    — blastscan.io          (Blast)
+//   MANTLESCAN_KEY   — mantlescan.xyz        (Mantle)
+//   CRONOSCAN_KEY    — cronoscan.com         (Cronos)
+//   GNOSISSCAN_KEY   — gnosisscan.io         (Gnosis)
+//   CELOSCAN_KEY     — celoscan.io           (Celo)
+//   MOONSCAN_KEY     — moonscan.io           (Moonbeam + Moonriver)
+//   AURORASCAN_KEY   — aurorascan.dev        (Aurora)
+//   No key needed:   astar, mode, manta, zksync (Blockscout-based)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const EXPLORER_CONFIG = {
+  "eth":           { url:"https://api.etherscan.io/api",                        key: process.env.ETHERSCAN_KEY    || "YourApiKeyToken" },
+  "bsc":           { url:"https://api.bscscan.com/api",                         key: process.env.BSCSCAN_KEY      || "YourApiKeyToken" },
+  "polygon":       { url:"https://api.polygonscan.com/api",                     key: process.env.POLYGONSCAN_KEY  || "YourApiKeyToken" },
+  "arbitrum":      { url:"https://api.arbiscan.io/api",                         key: process.env.ARBISCAN_KEY     || "YourApiKeyToken" },
+  "base":          { url:"https://api.basescan.org/api",                        key: process.env.BASESCAN_KEY     || "YourApiKeyToken" },
+  "optimism":      { url:"https://api-optimistic.etherscan.io/api",             key: process.env.OPTIMISM_KEY     || "YourApiKeyToken" },
+  "avalanche":     { url:"https://api.snowtrace.io/api",                        key: process.env.SNOWTRACE_KEY    || "YourApiKeyToken" },
+  "fantom":        { url:"https://api.ftmscan.com/api",                         key: process.env.FTMSCAN_KEY      || "YourApiKeyToken" },
+  "linea":         { url:"https://api.lineascan.build/api",                     key: process.env.LINEASCAN_KEY    || "YourApiKeyToken" },
+  "scroll":        { url:"https://api.scrollscan.com/api",                      key: process.env.SCROLLSCAN_KEY   || "YourApiKeyToken" },
+  "blast":         { url:"https://api.blastscan.io/api",                        key: process.env.BLASTSCAN_KEY    || "YourApiKeyToken" },
+  "mantle":        { url:"https://api.mantlescan.xyz/api",                      key: process.env.MANTLESCAN_KEY   || "YourApiKeyToken" },
+  "cronos":        { url:"https://api.cronoscan.com/api",                       key: process.env.CRONOSCAN_KEY    || "YourApiKeyToken" },
+  "gnosis":        { url:"https://api.gnosisscan.io/api",                       key: process.env.GNOSISSCAN_KEY   || "YourApiKeyToken" },
+  "celo":          { url:"https://api.celoscan.io/api",                         key: process.env.CELOSCAN_KEY     || "YourApiKeyToken" },
+  "moonbeam":      { url:"https://api-moonbeam.moonscan.io/api",                key: process.env.MOONSCAN_KEY     || "YourApiKeyToken" },
+  "moonriver":     { url:"https://api-moonriver.moonscan.io/api",               key: process.env.MOONSCAN_KEY     || "YourApiKeyToken" },
+  "aurora":        { url:"https://api.aurorascan.dev/api",                      key: process.env.AURORASCAN_KEY   || "YourApiKeyToken" },
+  "metis":         { url:"https://andromeda-explorer.metis.io/api",             key: process.env.METISSCAN_KEY    || "YourApiKeyToken" },
+  "kava":          { url:"https://api.kavascan.com/api",                        key: process.env.KAVASCAN_KEY     || "YourApiKeyToken" },
+  "polygon_zkevm": { url:"https://api-zkevm.polygonscan.com/api",               key: process.env.POLYGONSCAN_KEY  || "YourApiKeyToken" },
+  "arbitrum_nova": { url:"https://api-nova.arbiscan.io/api",                    key: process.env.ARBISCAN_KEY     || "YourApiKeyToken" },
+  // Blockscout-based — no key needed, different API format
+  "astar":         { url:"https://astar.blockscout.com/api",                    key: null, blockscout: true },
+  "mode":          { url:"https://explorer.mode.network/api",                   key: null, blockscout: true },
+  "manta":         { url:"https://pacific-explorer.manta.network/api",          key: null, blockscout: true },
+  "zksync":        { url:"https://block-explorer-api.mainnet.zksync.io/api",    key: null, blockscout: true },
 };
 
-async function fetchCovalentHolders(address, chain, meta = {}) {
-  const KEY = process.env.COVALENT_API_KEY;
-  if (!KEY) throw new Error("COVALENT_API_KEY not set");
-  const chainId = COVALENT_CHAIN_IDS[chain];
-  if (!chainId) throw new Error(`Chain "${chain}" not in Covalent map`);
+// Etherscan-compatible token holder fetch
+// Uses: ?module=token&action=tokenholderlist&contractaddress=...&page=1&offset=100
+async function fetchExplorerHolders(address, chain, meta = {}) {
+  const config = EXPLORER_CONFIG[chain];
+  if (!config) throw new Error(`No explorer configured for chain "${chain}"`);
+
   const chainLabel = CHAIN_LABELS[chain] || chain;
-  const url = `https://api.covalenthq.com/v1/${chainId}/tokens/${address}/token_holders/?page-size=100&page-number=0`;
-  const r = await fetch(url, { headers: { "Authorization": `Bearer ${KEY}`, "Accept": "application/json" } });
-  if (!r.ok) throw new Error(`Covalent HTTP ${r.status}`);
-  const d = await r.json();
-  if (d.error) throw new Error(`Covalent: ${d.error_message || d.error_code}`);
-  const items = d?.data?.items || [];
-  if (!items.length) throw new Error("Covalent returned 0 holders");
-  const decimals = items[0]?.contract_decimals ?? 18;
-  const totalSupply = items.reduce((s, h) => s + parseFloat(h.balance || 0), 0);
-  const holders = items.slice(0, 50).map(h => {
-    const bal = parseFloat(h.balance || 0);
-    const pct = totalSupply > 0 ? parseFloat(((bal / totalSupply) * 100).toFixed(4)) : 0;
-    const fmt = (bal / Math.pow(10, decimals)).toLocaleString(undefined, { maximumFractionDigits: 2 }) + " tokens";
-    return { address: h.address, percentage: pct, balance: fmt, label: null, entity: null, isContract: false, chain };
-  });
+  let holders = [];
+  let source  = "";
+
+  if (config.blockscout) {
+    // Blockscout API format
+    const url = `${config.url}?module=token&action=getTokenHolders&contractaddress=${address}&page=1&offset=100`;
+    const r   = await fetch(url, { headers: { Accept: "application/json" } });
+    if (!r.ok) throw new Error(`Explorer HTTP ${r.status}`);
+    const d = await r.json();
+    if (d.status === "0") throw new Error(`Explorer: ${d.message || d.result}`);
+    const items = d.result || [];
+    if (!items.length) throw new Error("Explorer returned 0 holders");
+    const total = items.reduce((s, h) => s + parseFloat(h.value || 0), 0);
+    holders = items.slice(0, 50).map(h => {
+      const bal = parseFloat(h.value || 0);
+      return {
+        address:    h.address,
+        percentage: total > 0 ? parseFloat(((bal / total) * 100).toFixed(4)) : 0,
+        balance:    bal.toLocaleString(undefined, { maximumFractionDigits: 2 }) + " tokens",
+        label: null, entity: null, isContract: false, chain,
+      };
+    });
+    source = `${chainLabel} Explorer / Blockscout (live)`;
+  } else {
+    // Etherscan-compatible format
+    const key = config.key;
+    const url = `${config.url}?module=token&action=tokenholderlist&contractaddress=${address}&page=1&offset=100&apikey=${key}`;
+    const r   = await fetch(url, { headers: { Accept: "application/json" } });
+    if (!r.ok) throw new Error(`Explorer HTTP ${r.status}`);
+    const d = await r.json();
+    if (d.status === "0") {
+      if (d.result === "Max rate limit reached") throw new Error("Explorer rate limit — try again shortly");
+      throw new Error(`Explorer: ${d.message || d.result}`);
+    }
+    const items = d.result || [];
+    if (!items.length) throw new Error("Explorer returned 0 holders");
+    const total = items.reduce((s, h) => s + parseFloat(h.TokenHolderQuantity || 0), 0);
+    holders = items.slice(0, 50).map(h => {
+      const bal = parseFloat(h.TokenHolderQuantity || 0);
+      return {
+        address:    h.TokenHolderAddress,
+        percentage: total > 0 ? parseFloat(((bal / total) * 100).toFixed(4)) : 0,
+        balance:    bal.toLocaleString(undefined, { maximumFractionDigits: 2 }) + " tokens",
+        label: null, entity: null, isContract: false, chain,
+      };
+    });
+    source = `${chainLabel} Explorer (live)`;
+  }
+
   return {
     coin: {
-      name:       meta.name   || d?.data?.contract_name || "Unknown Token",
-      ticker:     meta.ticker || d?.data?.contract_ticker_symbol || address.slice(0,6).toUpperCase(),
-      address, chain, chainLabel,
-      source:     `Covalent API (live) — ${chainLabel}`,
+      name:       meta.name   || "Unknown Token",
+      ticker:     meta.ticker || address.slice(0, 6).toUpperCase(),
+      address, chain, chainLabel, source,
       ...meta,
     },
     holders,
   };
 }
 
-// EVM TOKEN CASCADE: Ethplorer → Covalent → Moralis → clear message
+// EVM TOKEN CASCADE: Ethplorer → Block Explorer → Moralis → clear message
 async function fetchEVMTokenHolders(address, chain, meta = {}) {
   const chainLabel = CHAIN_LABELS[chain] || chain;
 
-  // 1. Ethplorer — free, no key, covers ETH + BSC
+  // 1. Ethplorer — free, no key, covers ETH + BSC best
   if (chain === "eth" || chain === "bsc") {
     try {
       return await fetchEthplorerByAddress(address, meta, chain === "bsc" ? "bsc" : "ethereum");
-    } catch (e) { console.warn(`[Ethplorer] ${e.message} — trying Covalent`); }
+    } catch (e) {
+      console.warn(`[Ethplorer] ${e.message} — trying block explorer`);
+    }
   }
 
-  // 2. Covalent — free key (goldrush.dev), covers 25+ chains
-  try {
-    return await fetchCovalentHolders(address, chain, meta);
-  } catch (e) { console.warn(`[Covalent] ${e.message} — trying Moralis`); }
+  // 2. Chain-specific block explorer — free key per chain, covers all EVM chains
+  if (EXPLORER_CONFIG[chain]) {
+    try {
+      return await fetchExplorerHolders(address, chain, meta);
+    } catch (e) {
+      console.warn(`[Explorer:${chain}] ${e.message} — trying Moralis`);
+    }
+  }
 
-  // 3. Moralis — fallback
+  // 3. Moralis — last resort fallback
   try {
     return await fetchMoralisHolders(address, chain, meta);
-  } catch (e) { console.warn(`[Moralis] ${e.message}`); }
+  } catch (e) {
+    console.warn(`[Moralis] ${e.message}`);
+  }
 
-  // 4. All failed — clear message
+  // 4. All failed
   throw new Error(
     `Currently only Bitcoin and Ethereum ERC-20 tokens are fully supported. ` +
     `Holder data for ${meta.name || address} on ${chainLabel} is not yet available. ` +

@@ -1040,16 +1040,16 @@ const EXPLORER_CONFIG = {
   "taiko":         { url:"https://api.taikoscan.io/api",                     key:E_KEY },
   "fraxtal":       { url:"https://api.fraxscan.com/api",                     key:E_KEY },
   "apechain":      { url:"https://api.apescan.io/api",                       key:E_KEY },
-  // Blockscout-based — no key needed
-  "astar":         { url:"https://astar.blockscout.com/api",                 key:null, blockscout:true },
-  "mode":          { url:"https://explorer.mode.network/api",                key:null, blockscout:true },
-  "manta":         { url:"https://pacific-explorer.manta.network/api",       key:null, blockscout:true },
-  "zksync":        { url:"https://block-explorer-api.mainnet.zksync.io/api", key:null, blockscout:true },
-  "soneium":       { url:"https://soneium.blockscout.com/api",               key:null, blockscout:true },
-  "unichain":      { url:"https://unichain.blockscout.com/api",              key:null, blockscout:true },
-  "worldchain":    { url:"https://worldchain-mainnet.explorer.alchemy.com/api", key:null, blockscout:true },
-  "ink":           { url:"https://explorer.inkonchain.com/api",              key:null, blockscout:true },
-  "boba":          { url:"https://bobascan.com/api",                         key:null, blockscout:true },
+  // Blockscout v2 API — no key needed, uses /api/v2/tokens/{address}/holders
+  "astar":         { base:"https://astar.blockscout.com",                    key:null, blockscout:true },
+  "mode":          { base:"https://explorer.mode.network",                   key:null, blockscout:true },
+  "manta":         { base:"https://pacific-explorer.manta.network",          key:null, blockscout:true },
+  "zksync":        { base:"https://block-explorer-api.mainnet.zksync.io",    key:null, blockscout:true },
+  "soneium":       { base:"https://soneium.blockscout.com",                  key:null, blockscout:true },
+  "unichain":      { base:"https://unichain.blockscout.com",                 key:null, blockscout:true },
+  "worldchain":    { base:"https://worldchain-mainnet.explorer.alchemy.com", key:null, blockscout:true },
+  "ink":           { base:"https://explorer.inkonchain.com",                 key:null, blockscout:true },
+  "boba":          { base:"https://bobascan.com",                            key:null, blockscout:true },
 };
 
 async function fetchExplorerHolders(address, chain, meta = {}) {
@@ -1058,24 +1058,26 @@ async function fetchExplorerHolders(address, chain, meta = {}) {
   const chainLabel = CHAIN_LABELS[chain] || chain;
 
   if (config.blockscout) {
-    // Blockscout format — no key needed
-    const url = `${config.url}?module=token&action=getTokenHolders&contractaddress=${address}&page=1&offset=100`;
+    // Blockscout v2 REST API — /api/v2/tokens/{address}/holders
+    const url = `${config.base}/api/v2/tokens/${address}/holders?limit=50`;
     const r   = await fetch(url, { headers: { Accept:"application/json" } });
-    if (!r.ok) throw new Error(`Explorer HTTP ${r.status}`);
+    if (!r.ok) throw new Error(`Blockscout HTTP ${r.status}`);
     const d = await r.json();
-    if (d.status === "0") throw new Error(`Explorer: ${d.message}`);
-    const items = d.result || [];
-    if (!items.length) throw new Error("Explorer returned 0 holders");
-    const total = items.reduce((s, h) => s + parseFloat(h.value || 0), 0);
+    // v2 returns { items: [...], next_page_params: ... }
+    const items = d.items || d.result || [];
+    if (!items.length) throw new Error("Blockscout returned 0 holders");
+    const total = items.reduce((s, h) => s + parseFloat(h.value || h.balance || 0), 0);
     return {
       coin: { name:meta.name||"Unknown Token", ticker:meta.ticker||address.slice(0,6).toUpperCase(),
               address, chain, chainLabel, source:`${chainLabel} Explorer (live)`, ...meta },
       holders: items.slice(0,50).map(h => {
-        const bal = parseFloat(h.value||0);
-        return { address:h.address,
+        const bal = parseFloat(h.value || h.balance || 0);
+        return {
+          address:    h.address?.hash || h.address || h.holder_address,
           percentage: total>0 ? parseFloat(((bal/total)*100).toFixed(4)) : 0,
-          balance: bal.toLocaleString(undefined,{maximumFractionDigits:2})+" tokens",
-          label:null, entity:null, isContract:false, chain };
+          balance:    bal.toLocaleString(undefined,{maximumFractionDigits:2})+" tokens",
+          label:null, entity:null, isContract:false, chain,
+        };
       }),
     };
   } else {

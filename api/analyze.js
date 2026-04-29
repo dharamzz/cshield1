@@ -1120,7 +1120,7 @@ async function fetchEVMTokenHolders(address, chain, meta = {}) {
   }
 
   // 2. Blockscout v2 — free, no key, covers 9 chains
-  if (BLOCKSCOUT_BASES[chain]) {
+  if (EXPLORER_CONFIG[chain]?.blockscout) {
     try {
       return await fetchExplorerHolders(address, chain, meta);
     } catch (e) { console.warn(`[Blockscout:${chain}] ${e.message}`); }

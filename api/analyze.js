@@ -422,16 +422,25 @@ const KNOWN_ETH_WALLETS = [
 async function fetchEthereumHolders(meta = {}) {
   const KEY = process.env.ETHPLORER_API_KEY || "freekey";
 
-  // Step 1: Fetch live ETH balances for all 53 known wallets in parallel
-  const knownResults = await Promise.allSettled(
-    KNOWN_ETH_WALLETS.map(w =>
-      fetchJSON(`https://api.ethplorer.io/getAddressInfo/${w.address}?apiKey=${KEY}`)
-        .then(d => ({ ...w, ethBalance: d.ETH?.balance || 0 }))
-    )
-  );
-  const knownHolders = knownResults
-    .filter(r => r.status === "fulfilled" && r.value.ethBalance > 0)
-    .map(r => r.value);
+  // Step 1: Fetch live ETH balances sequentially with 350ms delay between calls.
+  // Parallel fetching caused inconsistent results because Ethplorer freekey
+  // allows only ~3 req/sec — firing 52 requests at once results in most being
+  // 429'd and dropped, causing the wallet count to vary on every run.
+  // Sequential fetching is slower but returns consistent, complete data.
+  // With ETHPLORER_API_KEY registered (free at ethplorer.io) you can reduce
+  // the delay or switch back to parallel for better performance.
+  const DELAY_MS = process.env.ETHPLORER_API_KEY ? 100 : 350;
+  const knownHolders = [];
+  for (const w of KNOWN_ETH_WALLETS) {
+    try {
+      const d = await fetchJSON(
+        `https://api.ethplorer.io/getAddressInfo/${w.address}?apiKey=${KEY}`
+      );
+      const bal = d.ETH?.balance || 0;
+      if (bal > 0) knownHolders.push({ ...w, ethBalance: bal });
+    } catch (_) { /* skip wallets that fail — continue with rest */ }
+    await new Promise(r => setTimeout(r, DELAY_MS));
+  }
 
   // Step 2: Fetch WETH top 50 holders — catches large holders not in known list
   // WETH holders closely mirror the largest ETH holders (exchanges, protocols, whales)
@@ -495,7 +504,7 @@ async function fetchEthereumHolders(meta = {}) {
     coin: {
       name: "Ethereum", ticker: "ETH", address: null,
       chain: "ethereum", chainLabel: "Ethereum (native)",
-      source: "Ethplorer live balances + WETH top holders + CoinGecko supply",
+      source: `Ethplorer live balances (${knownHolders.length} known wallets) + WETH top holders + CoinGecko supply`,
       ...meta,
     },
     holders,

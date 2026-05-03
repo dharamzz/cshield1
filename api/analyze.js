@@ -89,7 +89,8 @@ async function analyze(query) {
   const { coin, holders } = await resolveHolders(query);
 
   // Classify holders into burn / exchange / normal
-  const classified = classifyHolders(holders);
+  // For ETH/Ethereum: protocol contracts are also excluded from concentration score
+  const classified = classifyHolders(holders, coin.chain);
 
   // Compute metrics using new Top-50 spec
   const metrics = computeMetrics(classified);
@@ -144,7 +145,7 @@ async function analyzeEntry(entry, originalQuery) {
     marketCap: cgData?.market_data?.market_cap?.usd    || null,
   };
   const { coin, holders } = await fetchEVMTokenHolders(entry.contract, entry.chain, meta);
-  const classified = classifyHolders(holders);
+  const classified = classifyHolders(holders, coin.chain);
   const metrics    = computeMetrics(classified);
   const score      = scoreHolderConcentration(metrics);
   return {
@@ -1627,7 +1628,13 @@ const KNOWN_EXCHANGE_ADDRESSES = new Set([
  * Returns { burn, exchange, normal, all }
  * where `all` is all holders sorted desc by percentage, each with _tag added.
  */
-function classifyHolders(holders) {
+function classifyHolders(holders, chain) {
+  // For ETH/Ethereum only: protocol contracts (staking, bridges, DEX pools)
+  // are treated like exchanges — excluded from the top-50 concentration score.
+  // This prevents the ETH2 deposit contract, Arbitrum bridge, Lido, etc.
+  // from inflating the risk score. Logic left as-is for all other chains.
+  const isEthereum = chain === "ethereum";
+
   const tagged = holders.map(h => {
     const addr   = (h.address || "").toLowerCase();
     const entity = (h.entity  || "").toLowerCase();
@@ -1639,6 +1646,9 @@ function classifyHolders(holders) {
       KNOWN_EXCHANGE_ADDRESSES.has(addr) ||
       entity === "exchange"
     ) {
+      tag = "exchange";
+    } else if (isEthereum && (h.isContract || entity === "contract")) {
+      // ETH only: protocol contracts excluded from concentration score
       tag = "exchange";
     } else {
       tag = "normal";

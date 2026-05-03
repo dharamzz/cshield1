@@ -355,9 +355,10 @@ async function fetchBitcoinHolders(meta = {}) {
 
 
 async function fetchEthereumHolders(meta = {}) {
-  // Uses pre-fetched static data from eth_wallet.js — instant, no API calls,
-  // fully consistent every run. Refresh eth_wallet.js using fetch_eth_info.html
-  // periodically (weekly recommended) to keep balances current.
+  // Reads pre-fetched static data from eth_wallet.js — instant, consistent,
+  // no Ethplorer API calls at request time. Labels and entity types are
+  // preserved exactly as generated. Refresh eth_wallet.js weekly using
+  // fetch_eth_info.html to keep balances current.
 
   if (!ETH_WALLET_DATA || ETH_WALLET_DATA.length === 0) {
     throw new Error(
@@ -366,7 +367,7 @@ async function fetchEthereumHolders(meta = {}) {
     );
   }
 
-  // Single CoinGecko call for live price, market cap, circulating supply
+  // One CoinGecko call for live price, market cap, circulating supply
   let circulatingSupply = 120_000_000;
   try {
     const cg = await fetchJSON(
@@ -378,12 +379,12 @@ async function fetchEthereumHolders(meta = {}) {
     meta.image     = meta.image     || cg.image?.small;
   } catch { /* use fallback */ }
 
-  // Build holders from static data — no API calls, instant
+  // Build holders — ethBalance stored in ETH units (already converted by fetch_eth_info.html)
   const holders = ETH_WALLET_DATA
     .map(w => ({
       address:    w.address,
       percentage: parseFloat(((w.ethBalance / circulatingSupply) * 100).toFixed(4)),
-      balance:    w.ethBalance.toFixed(4) + " ETH",
+      balance:    Number(w.ethBalance).toFixed(2) + " ETH",
       label:      w.label  || null,
       entity:     w.entity || null,
       isContract: w.entity === "Contract",
@@ -404,7 +405,7 @@ async function fetchEthereumHolders(meta = {}) {
     coin: {
       name: "Ethereum", ticker: "ETH", address: null,
       chain: "ethereum", chainLabel: "Ethereum (native)",
-      source: `Static wallet balances + CoinGecko supply${generatedAt}`,
+      source: `Pre-fetched wallet balances + CoinGecko supply${generatedAt}`,
       ...meta,
     },
     holders,

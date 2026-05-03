@@ -352,47 +352,128 @@ async function fetchBitcoinHolders(meta = {}) {
 // ETH circulating supply comes from CoinGecko (free, no key).
 // ─────────────────────────────────────────────────────────────────────────────
 
-// WETH contract address — used as proxy for ETH holder distribution
+// WETH contract — used to fetch top holders as proxy for large ETH holders
 const WETH = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
 
-// Publicly known large ETH addresses (exchanges, contracts, foundations).
-// These are NOT hardcoded balances — we fetch their LIVE balance via Ethplorer.
+// ─────────────────────────────────────────────────────────────────────────────
+// KNOWN_ETH_WALLETS — comprehensive list of publicly known large ETH addresses
+// Balances are fetched live via Ethplorer, not hardcoded.
+// Sources: Etherscan labels, Nansen, Arkham, public disclosures
+// ─────────────────────────────────────────────────────────────────────────────
 const KNOWN_ETH_WALLETS = [
-  { address: "0x00000000219ab540356cBB839Cbe05303d7705Fa", label: "ETH2 Deposit Contract",  entity: "Contract"  },
-  { address: "0xBE0eB53F46cd790Cd13851d5EFf43D12404d33E8", label: "Binance",                entity: "Exchange"  },
-  { address: "0xF977814e90dA44bFA03b6295A0616a897441aceC", label: "Binance 2",              entity: "Exchange"  },
-  { address: "0x40B38765696e3d5d8d9d834D8AaD4bB6e418E489", label: "Robinhood",              entity: "Exchange"  },
-  { address: "0x8315177aB297BA92A06054cE80a67Ed4DBd7ed3a", label: "Arbitrum Bridge",        entity: "Contract"  },
-  { address: "0x47ac0Fb4F2D84898e4D9E7b4DaB3C24507a6D503", label: "Binance 3",              entity: "Exchange"  },
-  { address: "0x21a31Ee1afC51d94C2eFcCAa2092aD1028285549", label: "Binance 4",              entity: "Exchange"  },
-  { address: "0xDFd5293D8e347dFe59E90eFd55b2956a1343963d", label: "Coinbase",               entity: "Exchange"  },
-  { address: "0x28C6c06298d514Db089934071355E5743bf21d60", label: "Binance 5",              entity: "Exchange"  },
-  { address: "0x21a31Ee1afC51d94C2eFcCAa2092aD1028285549", label: "Binance 6",              entity: "Exchange"  },
-  { address: "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B", label: "Vitalik Buterin",        entity: "Known"     },
-  { address: "0x4Ddc2D193948926D02f9B1fE9e1daa0718270ED5", label: "Compound ETH",           entity: "Contract"  },
-  { address: "0x3f5CE5FBFe3E9af3971dD833D26bA9b5C936f0bE", label: "Binance 7",              entity: "Exchange"  },
-  { address: "0xA7EFae728D2936e78BDA97dc267687568dD593f", label: "Curve Finance",          entity: "Contract"  },
-  { address: "0x1db3439a222C519ab44bb1144fC28167b4Fa6EE6", label: "Nexo",                   entity: "Exchange"  },
-  { address: "0x9696f59E4d72E237BE84fFD425DCaD154Bf96976", label: "Binance 8",              entity: "Exchange"  },
-  { address: "0x1522900b6dafac587d499a862861c0869be6e428", label: "Unknown Whale",          entity: "Whale"     },
-  { address: "0x0D0707963952f2fBA59dD06f2b425ace40b492Fe", label: "Gate.io",               entity: "Exchange"  },
-  { address: "0x2FAF487A4414Fe77e2327F0bf4AE2a264a776AD2", label: "FTX (defunct)",          entity: "Exchange"  },
-  { address: "0x08638ef1a205be6762a8b935f5da9b700cf7322c", label: "Binance 9",              entity: "Exchange"  },
+  // ── Staking / Protocol Contracts (largest ETH holders) ───────────────────
+  { address: "0x00000000219ab540356cBB839Cbe05303d7705Fa", label: "ETH2 Beacon Deposit Contract", entity: "Contract"  },
+  { address: "0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84", label: "Lido stETH",                  entity: "Contract"  },
+  { address: "0xA9D1e08C7793af67e9d92fe308d5697FB81d3E43", label: "Coinbase Prime Custody",       entity: "Exchange"  },
+  { address: "0x4Ddc2D193948926D02f9B1fE9e1daa0718270ED5", label: "Compound cETH",               entity: "Contract"  },
+  { address: "0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0", label: "Lido wstETH",                 entity: "Contract"  },
+  { address: "0xDd9f72afED3631a6C85b5369D84875e6c7f6b58a", label: "Lido Execution Layer Rewards", entity: "Contract"  },
+  { address: "0x388C818CA8B9251b393131C08a736A67ccB19297", label: "Lido Legacy Rewards",          entity: "Contract"  },
+  { address: "0x0D0707963952f2fBA59dD06f2b425ace40b492Fe", label: "Gate.io",                     entity: "Exchange"  },
+
+  // ── Bridges ───────────────────────────────────────────────────────────────
+  { address: "0x8315177aB297BA92A06054cE80a67Ed4DBd7ed3a", label: "Arbitrum Bridge",             entity: "Contract"  },
+  { address: "0x99C9fc46f92E8a1c0deC1b1747d010903E884bE1", label: "Optimism Bridge",             entity: "Contract"  },
+  { address: "0x3154Cf16ccdb4C6d922629664174b904d80F2C35", label: "Base Bridge",                  entity: "Contract"  },
+  { address: "0x32400084C286CF3E17e7B677ea9583e60a000324", label: "zkSync Bridge",               entity: "Contract"  },
+  { address: "0x5a7d6b2f92c77fad6ccabd7ee0624e64907eaf3e", label: "ZKsync Era Diamond",          entity: "Contract"  },
+  { address: "0x2796317b0fF8538F253012862c06787Adfb8cEb", label: "Linea Bridge",                 entity: "Contract"  },
+  { address: "0xD3E2Df5e8B6a952e80048dA26F7F3e8C5FdD73F5", label: "Scroll Bridge",               entity: "Contract"  },
+
+  // ── Exchanges ─────────────────────────────────────────────────────────────
+  { address: "0xBE0eB53F46cd790Cd13851d5EFf43D12404d33E8", label: "Binance Cold Wallet",         entity: "Exchange"  },
+  { address: "0xF977814e90dA44bFA03b6295A0616a897441aceC", label: "Binance 2",                   entity: "Exchange"  },
+  { address: "0x28C6c06298d514Db089934071355E5743bf21d60", label: "Binance 3",                   entity: "Exchange"  },
+  { address: "0x21a31Ee1afC51d94C2eFcCAa2092aD1028285549", label: "Binance 4",                   entity: "Exchange"  },
+  { address: "0x47ac0Fb4F2D84898e4D9E7b4DaB3C24507a6D503", label: "Binance 5",                   entity: "Exchange"  },
+  { address: "0x9696f59E4d72E237BE84fFD425DCaD154Bf96976", label: "Binance 6",                   entity: "Exchange"  },
+  { address: "0x3f5CE5FBFe3E9af3971dD833D26bA9b5C936f0bE", label: "Binance 7",                   entity: "Exchange"  },
+  { address: "0x08638ef1a205be6762a8b935f5da9b700cf7322c", label: "Binance 8",                   entity: "Exchange"  },
+  { address: "0xDFd5293D8e347dFe59E90eFd55b2956a1343963d", label: "Coinbase",                    entity: "Exchange"  },
+  { address: "0x71660c4005BA85c37ccec55d0C4493E66fe775d3", label: "Coinbase 2",                  entity: "Exchange"  },
+  { address: "0x503828976D22510aad0201ac7EC88293211D23Da", label: "Coinbase 3",                  entity: "Exchange"  },
+  { address: "0x77696bb39917C91A0c3908D577d5e322095425cA", label: "Coinbase 4",                  entity: "Exchange"  },
+  { address: "0x40B38765696e3d5d8d9d834D8AaD4bB6e418E489", label: "Robinhood",                   entity: "Exchange"  },
+  { address: "0x2910543Af39aba0Cd09dBb2D50200b3E800A63D2", label: "Kraken",                      entity: "Exchange"  },
+  { address: "0x0A869d79a7052C7f1b55a8EbAbbeA3420F0D1E13", label: "Kraken 2",                    entity: "Exchange"  },
+  { address: "0x6Cc5F688a315f3dC28A7781717a9A798a59fDA7b", label: "OKX",                         entity: "Exchange"  },
+  { address: "0x236F9F97e0E62388479bf9e5ba4889e46B0273C3", label: "OKX 2",                       entity: "Exchange"  },
+  { address: "0x1151314c646Ce4E0eFD76D1aF4760aE66A9Fe30F", label: "Bitfinex",                    entity: "Exchange"  },
+  { address: "0x876EabF441B2EE5B5b0554Fd502a8E0600950cFa", label: "Bitfinex 2",                  entity: "Exchange"  },
+  { address: "0xd24400ae8BFEbb18cA49Be86258a3C749cf46853", label: "Gemini",                      entity: "Exchange"  },
+  { address: "0xab5C66752a9e8167967685F1450532fB96d5d24f", label: "Huobi/HTX",                   entity: "Exchange"  },
+  { address: "0x6748f50f686bfbca6fe8ad62b22228b87F31ff2b", label: "Huobi/HTX 2",                 entity: "Exchange"  },
+  { address: "0x2B5634C42055806a59e9107ED44D43c426E58258", label: "KuCoin",                      entity: "Exchange"  },
+  { address: "0xa1D8d972560C2f8144AF871db508F0B0B10a3fbF", label: "KuCoin 2",                    entity: "Exchange"  },
+  { address: "0xf89d7b9c864f589bbF53a82105107622B35EaA40", label: "Bybit",                       entity: "Exchange"  },
+  { address: "0x1db3439a222C519ab44bb1144fC28167b4Fa6EE6", label: "Nexo",                        entity: "Exchange"  },
+  { address: "0x6262998Ced04146fA42253a5C0AF90CA02dfd2A3", label: "Crypto.com",                  entity: "Exchange"  },
+  { address: "0x1F69Da816fEA6bdc83DE71f9B1FFf54f5f8f8a7", label: "Upbit",                       entity: "Exchange"  },
+
+  // ── DeFi Protocols ────────────────────────────────────────────────────────
+  { address: "0xA7EFae728D2936e78BDA97dc267687568dD593f",  label: "Curve Finance",              entity: "Contract"  },
+  { address: "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419", label: "Chainlink ETH/USD Oracle",   entity: "Contract"  },
+  { address: "0x93c08a3168fC06fc1E1E2FB9bF8C5a8e1e23A976", label: "Aave ETH Pool",              entity: "Contract"  },
+  { address: "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2", label: "Aave v3 Pool",               entity: "Contract"  },
+  { address: "0x1F98431c8aD98523631AE4a59f267346ea31F984", label: "Uniswap v3 Factory",         entity: "Contract"  },
+  { address: "0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45", label: "Uniswap v3 Router",          entity: "Contract"  },
+
+  // ── Known Institutional / Whales ─────────────────────────────────────────
+  { address: "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B", label: "Vitalik Buterin",            entity: "Known"     },
+  { address: "0x220866B1A2219f40e72f5c628B65D54268cA3A9D", label: "Ethereum Foundation",        entity: "Known"     },
+  { address: "0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe", label: "Ethereum Foundation 2",      entity: "Known"     },
+  { address: "0x9B0C1D07a1bbA9c86A4Dda5DD9EdD36d7952E46b", label: "Jump Trading",               entity: "Known"     },
+  { address: "0x1522900b6dafac587d499a862861c0869be6e428", label: "Unknown Whale",              entity: "Whale"     },
+  { address: "0x2FAF487A4414Fe77e2327F0bf4AE2a264a776AD2", label: "FTX (defunct)",              entity: "Exchange"  },
 ];
 
 async function fetchEthereumHolders(meta = {}) {
   const KEY = process.env.ETHPLORER_API_KEY || "freekey";
 
-  // Fetch live ETH balances for all known large wallets in parallel
-  const results = await Promise.allSettled(
+  // ── Step 1: Fetch live ETH balances for all known wallets in parallel ──────
+  const knownResults = await Promise.allSettled(
     KNOWN_ETH_WALLETS.map(w =>
-      fetchJSON(`https://api.ethplorer.io/getAddressInfo/${w.address}?apiKey=${KEY}`)
+      ethplorerFetch(`https://api.ethplorer.io/getAddressInfo/${w.address}?apiKey=${KEY}`)
         .then(d => ({ ...w, ethBalance: d.ETH?.balance || 0 }))
     )
   );
 
-  // Get circulating supply from CoinGecko
-  let circulatingSupply = 120_000_000; // ETH approximate fallback
+  const knownHolders = knownResults
+    .filter(r => r.status === "fulfilled" && r.value.ethBalance > 0)
+    .map(r => r.value);
+
+  // ── Step 2: Fetch WETH top holders as proxy for large unknown ETH holders ──
+  // WETH holders are almost identical to large ETH holders (exchanges, protocols).
+  // This catches large holders NOT in our known list above.
+  let wethHolders = [];
+  try {
+    const wethData = await ethplorerFetch(
+      `https://api.ethplorer.io/getTopTokenHolders/${WETH}?apiKey=${KEY}&limit=50`
+    );
+    const seen = new Set(KNOWN_ETH_WALLETS.map(w => w.address.toLowerCase()));
+    wethHolders = (wethData.holders || [])
+      .filter(h => !seen.has(h.address.toLowerCase()))
+      .map(h => ({
+        address:    h.address,
+        ethBalance: h.balance || 0,   // WETH balance ≈ ETH balance for these wallets
+        label:      null,
+        entity:     "Whale",
+        isContract: false,
+      }));
+  } catch (_) { /* non-fatal — known wallets already cover the major holders */ }
+
+  // ── Step 3: Merge known + WETH-discovered holders, deduplicate ─────────────
+  const allHolders = [...knownHolders, ...wethHolders];
+  const seen = new Set();
+  const deduped = allHolders.filter(h => {
+    const key = h.address.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  // ── Step 4: Get circulating supply from CoinGecko ──────────────────────────
+  let circulatingSupply = 120_000_000;
   try {
     const cg = await fetchJSON(
       "https://api.coingecko.com/api/v3/coins/ethereum?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false"
@@ -403,32 +484,30 @@ async function fetchEthereumHolders(meta = {}) {
     meta.image     = meta.image     || cg.image?.small;
   } catch { /* use fallback */ }
 
-  const holders = results
-    .filter(r => r.status === "fulfilled" && r.value.ethBalance > 0)
-    .map(r => {
-      const w = r.value;
-      return {
-        address:    w.address,
-        percentage: parseFloat(((w.ethBalance / circulatingSupply) * 100).toFixed(4)),
-        balance:    w.ethBalance.toFixed(4) + " ETH",
-        label:      w.label,
-        entity:     w.entity,
-        isContract: w.entity === "Contract",
-        chain:      "ethereum",
-      };
-    })
+  // ── Step 5: Build holder objects, sort, take top 50 ───────────────────────
+  const holders = deduped
+    .map(w => ({
+      address:    w.address,
+      percentage: parseFloat(((w.ethBalance / circulatingSupply) * 100).toFixed(4)),
+      balance:    w.ethBalance.toFixed(4) + " ETH",
+      label:      w.label || null,
+      entity:     w.entity || null,
+      isContract: w.entity === "Contract",
+      chain:      "ethereum",
+    }))
     .filter(h => h.percentage > 0)
     .sort((a, b) => b.percentage - a.percentage)
-    .slice(0, 20);
+    .slice(0, 50);
 
   if (!holders.length)
-    throw new Error("Could not fetch live ETH holder balances from Ethplorer. Try again in a moment.");
+    throw new Error("Could not fetch ETH holder balances from Ethplorer. Try again in a moment.");
 
   return {
     coin: {
       name: "Ethereum", ticker: "ETH", address: null,
       chain: "ethereum", chainLabel: "Ethereum (native)",
-      source: "Ethplorer live balances + CoinGecko supply", ...meta,
+      source: "Ethplorer live balances + WETH top holders + CoinGecko supply",
+      ...meta,
     },
     holders,
   };

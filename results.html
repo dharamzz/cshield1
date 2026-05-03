@@ -71,6 +71,10 @@ nav{position:sticky;top:0;z-index:10;display:flex;align-items:center;justify-con
   cursor:pointer;transition:all .15s;white-space:nowrap;flex-shrink:0}
 .copy-addr-btn:hover{border-color:var(--accent);color:var(--accent)}
 .copy-addr-btn.copied{border-color:#4dffb0;color:#4dffb0}
+.copy-inline{background:none;border:none;padding:0 3px;cursor:pointer;
+  color:var(--dim);font-size:10px;vertical-align:middle;transition:color .15s;line-height:1}
+.copy-inline:hover{color:var(--accent)}
+.copy-inline.copied{color:#4dffb0}
 .coin-meta{display:flex;gap:1.5rem;flex-wrap:wrap}
 .meta-item{text-align:right}
 .meta-lbl{font-family:var(--mono);font-size:9px;color:var(--dim);letter-spacing:.1em;text-transform:uppercase}
@@ -395,6 +399,18 @@ function copyAddr(text,btn){
     setTimeout(function(){ btn.textContent='Copy'; btn.classList.remove('copied'); },1800);
   });
 }
+function copyHolderAddr(text,btn){
+  navigator.clipboard.writeText(text).then(function(){
+    btn.innerHTML='&#10003;'; btn.classList.add('copied');
+    setTimeout(function(){ btn.innerHTML='&#10697;'; btn.classList.remove('copied'); },1800);
+  }).catch(function(){
+    var ta=document.createElement('textarea');
+    ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+    btn.innerHTML='&#10003;'; btn.classList.add('copied');
+    setTimeout(function(){ btn.innerHTML='&#10697;'; btn.classList.remove('copied'); },1800);
+  });
+}
 function short(addr){
   if(!addr)return '—';
   if(addr.startsWith('0x')&&addr.length>12) return addr.slice(0,10)+'…'+addr.slice(-6);
@@ -588,7 +604,7 @@ function renderHolders(holders,n){
     const riskC=h.percentage>=10?'#ff6b35':h.percentage>=3?'#ffd447':'#4dffb0';
     return `<tr>
       <td class="td-rank">${i+1}</td>
-      <td class="td-addr">${h.label&&h.label.length<30?`<strong style="color:var(--text)">${h.label}</strong><br>`:''}<span>${short(h.address)}</span></td>
+      <td class="td-addr">${h.label&&h.label.length<30?`<strong style="color:var(--text)">${h.label}</strong><br>`:''}<span>${short(h.address)}</span><button class="copy-inline" onclick="copyHolderAddr('${h.address}',this)" title="Copy address">&#10697;</button></td>
       <td>${tagHtml}</td>
       <td class="td-pct" style="color:${riskC}">${h.percentage.toFixed(2)}%</td>
       <td><div class="mini-track"><div class="mini-fill" style="width:${fillW}%;background:${riskC}"></div></div></td>

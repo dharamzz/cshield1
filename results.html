@@ -71,6 +71,10 @@ nav{position:sticky;top:0;z-index:10;display:flex;align-items:center;justify-con
   cursor:pointer;transition:all .15s;white-space:nowrap;flex-shrink:0}
 .copy-addr-btn:hover{border-color:var(--accent);color:var(--accent)}
 .copy-addr-btn.copied{border-color:#4dffb0;color:#4dffb0}
+.dl-wallets-btn{background:none;border:1px solid var(--border);border-radius:4px;
+  color:var(--muted);font-family:var(--mono);font-size:10px;padding:3px 10px;
+  cursor:pointer;transition:all .15s;white-space:nowrap}
+.dl-wallets-btn:hover{border-color:var(--accent);color:var(--accent)}
 .copy-inline{background:none;border:none;padding:0 3px;cursor:pointer;
   color:var(--dim);font-size:10px;vertical-align:middle;transition:color .15s;line-height:1}
 .copy-inline:hover{color:var(--accent)}
@@ -307,6 +311,7 @@ tr:hover td{background:rgba(255,255,255,0.015)}
             <button class="tab-btn on" onclick="showHolders(10,this)">Top 10</button>
             <button class="tab-btn" onclick="showHolders(20,this)">Top 20</button>
           </div>
+          <button class="dl-wallets-btn" onclick="downloadWallets()" title="Download wallet data as CSV">&#11123; Download</button>
           <div class="section-src" id="dataSrc"></div>
         </div>
       </div>
@@ -610,6 +615,41 @@ function renderHolders(holders,n){
       <td><div class="mini-track"><div class="mini-fill" style="width:${fillW}%;background:${riskC}"></div></div></td>
     </tr>`;
   }).join('');
+}
+
+function downloadWallets(){
+  if(!gHolders||!gHolders.length){ alert("No holder data to download."); return; }
+
+  // Build CSV
+  var coinName = document.getElementById("coinName").textContent || "coin";
+  var coinTicker = (document.getElementById("coinTicker").textContent || "").split(" ")[0];
+  var rows = [["#","Address","Label","Entity","Type","Percentage","Balance","Chain"]];
+
+  gHolders.forEach(function(h, i){
+    rows.push([
+      i + 1,
+      h.address  || "",
+      h.label    || "",
+      h.entity   || "",
+      h.walletType || guessTag(h) || "",
+      h.percentage != null ? h.percentage.toFixed(4) : "",
+      h.balance  || "",
+      h.chain    || "",
+    ]);
+  });
+
+  var csv = rows.map(function(r){
+    return r.map(function(v){
+      var s = String(v).replace(/"/g, '""');
+      return s.includes(",") || s.includes('"') || s.includes("\n") ? '"' + s + '"' : s;
+    }).join(",");
+  }).join("\n");
+
+  var blob = new Blob([csv], { type: "text/csv" });
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = (coinTicker || coinName).replace(/[^a-z0-9]/gi,"_") + "_holders.csv";
+  a.click();
 }
 
 function showHolders(n,btn){

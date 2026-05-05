@@ -76,9 +76,7 @@ nav{position:sticky;top:0;z-index:10;display:flex;align-items:center;justify-con
 .liq-stat-label{font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.3rem}
 .liq-stat-value{font-size:1.1rem;font-weight:700;font-family:var(--mono)}
 .liq-pairs{width:100%;border-collapse:collapse;font-size:.75rem;margin-top:.5rem}
-.liq-pairs th{background:var(--surface2);border-bottom:1px solid var(--border2);
-  padding:.5rem .75rem;text-align:left;font-size:.65rem;color:var(--muted);
-  text-transform:uppercase;letter-spacing:.06em}
+.liq-pairs th{background:var(--surface2);border-bottom:1px solid var(--border2);padding:.5rem .75rem;text-align:left;font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
 .liq-pairs td{padding:.5rem .75rem;border-bottom:1px solid var(--border);vertical-align:middle}
 .liq-pairs tr:last-child td{border-bottom:none}
 .liq-pairs a{color:var(--accent);text-decoration:none;font-size:.72rem}
@@ -548,7 +546,7 @@ function showError(msg,q){
 
 // ── RENDER ────────────────────────────────────────────────────
 function render(data){
-  const {coin,metrics,parameter,holders,upcoming}=data;
+  const {coin,metrics,parameter,holders,upcoming,liquidity}=data;
   const score=parameter.score;
 
   // Coin header
@@ -592,24 +590,17 @@ function render(data){
     </div>`;
   }).join('');
 
-  // Param strip
+  // Param strip — parameter 2 is Liquidity Depth (live score when available)
   const strip=document.getElementById('paramStrip');
-  const col=scoreColor(score);
-
-  // Build full 5-parameter list including live liquidity score
-  const liqParam = data.liquidity && data.liquidity.score !== null
-    ? { id:2, name:"Liquidity Depth", score: data.liquidity.score }
-    : { id:2, name:"Liquidity Depth", score: null };
+  const liqScore = liquidity?.score ?? null;
+  const liqParam = { id:2, name:'Liquidity Depth', score: liqScore };
   const allParams = [
-    { id:1, name:"Holder Concentration", score },
+    { id:1, name:'Holder Concentration', score },
     liqParam,
     ...(upcoming||[])
   ];
-
   strip.innerHTML=allParams.map(p=>{
-    const pCol = p.id===2 && data.liquidity?.score !== null
-      ? scoreColor(data.liquidity.score)
-      : col;
+    const pCol = scoreColor(p.score);
     return `
     <div class="ps-card ${p.score!==null?'ps-live':''}">
       <div class="ps-num">0${p.id}</div>
@@ -625,7 +616,7 @@ function render(data){
   renderHolders(holders,10);
 
   // Liquidity Depth
-  renderLiquidity(data.liquidity);
+  renderLiquidity(liquidity);
 
   // Data note
   document.getElementById('dataNote').innerHTML=
@@ -700,66 +691,37 @@ function fmtUsd(n){
 }
 
 function renderLiquidity(liq){
-  const sec = document.getElementById("liquiditySection");
-  const content = document.getElementById("liquidityContent");
-  const src = document.getElementById("liquiditySrc");
-
-  if(!liq){ sec.style.display="none"; return; }
-
+  const sec=document.getElementById("liquiditySection");
+  const content=document.getElementById("liquidityContent");
+  const srcEl=document.getElementById("liquiditySrc");
+  if(!liq){sec.style.display="none";return;}
   sec.style.display="block";
-  src.textContent = "DexScreener (live)";
-
-  // Score null = not available for this chain
+  srcEl.textContent="DexScreener (live)";
   if(liq.score===null){
-    content.innerHTML = `<div class="liq-na">${liq.summary||"Liquidity data not available for this coin."}</div>`;
+    content.innerHTML=`<div class="liq-na">${liq.summary||"Liquidity data not available for this coin."}</div>`;
     return;
   }
-
-  const riskCol = liq.score===1?"#4dffb0":liq.score===2?"#ffd447":"#ff6b35";
-
-  // Stats grid
-  var statsHtml = `<div class="liq-grid">
-    <div class="liq-stat">
-      <div class="liq-stat-label">Liquidity Score</div>
-      <div class="liq-stat-value" style="color:${riskCol}">${liq.score}/3 — ${liq.rating}</div>
-    </div>
-    <div class="liq-stat">
-      <div class="liq-stat-label">Total DEX Liquidity</div>
-      <div class="liq-stat-value">${fmtUsd(liq.liquidityUsd)}</div>
-    </div>
-    <div class="liq-stat">
-      <div class="liq-stat-label">Liquidity / Market Cap</div>
-      <div class="liq-stat-value" style="color:${riskCol}">${liq.liquidityPct!=null?liq.liquidityPct.toFixed(2)+"%":"—"}</div>
-    </div>
-    <div class="liq-stat">
-      <div class="liq-stat-label">Active DEX Pairs</div>
-      <div class="liq-stat-value">${liq.pairCount||0}</div>
-    </div>
+  const riskCol=liq.score===1?"#4dffb0":liq.score===2?"#ffd447":"#ff6b35";
+  const statsHtml=`<div class="liq-grid">
+    <div class="liq-stat"><div class="liq-stat-label">Liquidity Score</div><div class="liq-stat-value" style="color:${riskCol}">${liq.score}/3 — ${liq.rating}</div></div>
+    <div class="liq-stat"><div class="liq-stat-label">Total DEX Liquidity</div><div class="liq-stat-value">${fmtUsd(liq.liquidityUsd)}</div></div>
+    <div class="liq-stat"><div class="liq-stat-label">Liquidity / Market Cap</div><div class="liq-stat-value" style="color:${riskCol}">${liq.liquidityPct!=null?liq.liquidityPct.toFixed(2)+"%":"—"}</div></div>
+    <div class="liq-stat"><div class="liq-stat-label">Active DEX Pairs</div><div class="liq-stat-value">${liq.pairCount||0}</div></div>
   </div>`;
-
-  // Top pairs table
-  var pairsHtml = "";
-  if(liq.topPairs && liq.topPairs.length){
-    pairsHtml = `<table class="liq-pairs">
-      <thead><tr><th>DEX</th><th>Pair</th><th>Liquidity</th><th>24h Volume</th><th>24h Txns</th><th></th></tr></thead>
-      <tbody>` +
-      liq.topPairs.map(function(p){
-        return `<tr>
-          <td>${p.dex}</td>
-          <td style="font-family:var(--mono);font-size:.72rem">${p.baseSymbol}/${p.quoteSymbol}</td>
-          <td>${fmtUsd(p.liquidityUsd)}</td>
-          <td>${fmtUsd(p.volume24h)}</td>
-          <td>${p.txns24h.toLocaleString()}</td>
-          <td>${p.url?`<a href="${p.url}" target="_blank" rel="noopener">View &#8599;</a>`:""}</td>
-        </tr>`;
-      }).join("") +
-      `</tbody></table>`;
+  var pairsHtml="";
+  if(liq.topPairs&&liq.topPairs.length){
+    pairsHtml=`<table class="liq-pairs"><thead><tr><th>DEX</th><th>Pair</th><th>Liquidity</th><th>24h Volume</th><th>24h Txns</th><th></th></tr></thead><tbody>`+
+    liq.topPairs.map(p=>`<tr>
+      <td>${p.dex}</td>
+      <td style="font-family:var(--mono);font-size:.72rem">${p.baseSymbol}/${p.quoteSymbol}</td>
+      <td>${fmtUsd(p.liquidityUsd)}</td>
+      <td>${fmtUsd(p.volume24h)}</td>
+      <td>${p.txns24h.toLocaleString()}</td>
+      <td>${p.url?`<a href="${p.url}" target="_blank" rel="noopener">View &#8599;</a>`:""}</td>
+    </tr>`).join("")+`</tbody></table>`;
   }
-
-  // Summary
-  var summaryHtml = `<div style="font-size:.78rem;color:var(--muted);margin-top:.75rem;padding:.5rem .25rem">${liq.summary}</div>`;
-
-  content.innerHTML = statsHtml + pairsHtml + summaryHtml;
+  const summaryHtml=`<div style="font-size:.78rem;color:var(--muted);margin-top:.75rem;padding:.5rem .25rem">${liq.summary}</div>`;
+  content.innerHTML=statsHtml+pairsHtml+summaryHtml;
 }
 
 function showHolders(n,btn){

@@ -40,6 +40,7 @@
 
 import { lookup as coinLookup, lookupAll as coinLookupAll, lookupByCgId } from "./coinmap.js";
 import { ETH_WALLET_DATA, ETH_WALLET_GENERATED_AT } from "./eth_wallet.js";
+import { fetchLiquidity } from "./liquidity.js";
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -99,9 +100,12 @@ async function analyze(query) {
   // Score 1–3 with exchange penalty (capped at 3)
   const score = scoreHolderConcentration(metrics);
 
+  // Parameter 2: Liquidity Depth (ETH chain ERC-20 tokens only, runs in parallel)
+  const meta = { ticker: coin.ticker, marketCap: coin.marketCap };
+  const liquidity = await fetchLiquidity(coin.address, coin.chain, meta);
+
   return {
     coin,
-    // Return up to 20 holders for display, annotated with their classification
     holders: classified.all.slice(0, 50).map(h => ({
       ...h,
       walletType: h._tag,
@@ -116,8 +120,8 @@ async function analyze(query) {
       breakdown: buildBreakdown(metrics),
       summary:   buildSummary(coin.ticker, metrics, score),
     },
+    liquidity,
     upcoming: [
-      { id: 2, name: "Liquidity Depth",     score: null },
       { id: 3, name: "Contract Audit",      score: null },
       { id: 4, name: "Dev Wallet Activity", score: null },
       { id: 5, name: "Market Cap / Volume", score: null },
@@ -149,6 +153,10 @@ async function analyzeEntry(entry, originalQuery) {
   const classified = classifyHolders(holders, coin.chain);
   const metrics    = computeMetrics(classified);
   const score      = scoreHolderConcentration(metrics);
+  // Parameter 2: Liquidity Depth
+  const liqMeta = { ticker: coin.ticker, marketCap: coin.marketCap };
+  const liquidity = await fetchLiquidity(coin.address, coin.chain, liqMeta);
+
   return {
     coin,
     holders: classified.all.slice(0, 50).map(h => ({ ...h, walletType: h._tag })),
@@ -159,8 +167,8 @@ async function analyzeEntry(entry, originalQuery) {
       breakdown: buildBreakdown(metrics),
       summary: buildSummary(coin.ticker, metrics, score),
     },
+    liquidity,
     upcoming: [
-      { id: 2, name: "Liquidity Depth",     score: null },
       { id: 3, name: "Contract Audit",      score: null },
       { id: 4, name: "Dev Wallet Activity", score: null },
       { id: 5, name: "Market Cap / Volume", score: null },
@@ -355,10 +363,9 @@ async function fetchBitcoinHolders(meta = {}) {
 
 
 async function fetchEthereumHolders(meta = {}) {
-  // Reads pre-fetched static data from eth_wallet.js — instant, consistent,
-  // no Ethplorer API calls at request time. Labels and entity types are
-  // preserved exactly as generated. Refresh eth_wallet.js weekly using
-  // fetch_eth_info.html to keep balances current.
+  // Uses pre-fetched static data from eth_wallet.js — instant, no API calls,
+  // fully consistent every run. Refresh eth_wallet.js using fetch_eth_info.html
+  // periodically (weekly recommended) to keep balances current.
 
   if (!ETH_WALLET_DATA || ETH_WALLET_DATA.length === 0) {
     throw new Error(
@@ -367,7 +374,7 @@ async function fetchEthereumHolders(meta = {}) {
     );
   }
 
-  // One CoinGecko call for live price, market cap, circulating supply
+  // Single CoinGecko call for live price, market cap, circulating supply
   let circulatingSupply = 120_000_000;
   try {
     const cg = await fetchJSON(
@@ -379,12 +386,12 @@ async function fetchEthereumHolders(meta = {}) {
     meta.image     = meta.image     || cg.image?.small;
   } catch { /* use fallback */ }
 
-  // Build holders — ethBalance stored in ETH units (already converted by fetch_eth_info.html)
+  // Build holders from static data — no API calls, instant
   const holders = ETH_WALLET_DATA
     .map(w => ({
       address:    w.address,
       percentage: parseFloat(((w.ethBalance / circulatingSupply) * 100).toFixed(4)),
-      balance:    Number(w.ethBalance).toFixed(2) + " ETH",
+      balance:    w.ethBalance.toFixed(4) + " ETH",
       label:      w.label  || null,
       entity:     w.entity || null,
       isContract: w.entity === "Contract",
@@ -405,7 +412,7 @@ async function fetchEthereumHolders(meta = {}) {
     coin: {
       name: "Ethereum", ticker: "ETH", address: null,
       chain: "ethereum", chainLabel: "Ethereum (native)",
-      source: `Pre-fetched wallet balances + CoinGecko supply${generatedAt}`,
+      source: `Static wallet balances + CoinGecko supply${generatedAt}`,
       ...meta,
     },
     holders,

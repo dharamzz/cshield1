@@ -37,7 +37,12 @@ const MIN_PAIR_LIQUIDITY_USD = 1000;
 // }
 // ─────────────────────────────────────────────────────────────────────────────
 export async function fetchLiquidity(contract, chain, meta = {}) {
-  // Only supported for ETH chain ERC-20 tokens
+  // WETH contract is used as liquidity proxy for ETH native
+  const WETH_CONTRACT = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2".toLowerCase();
+  const isWethProxy = contract?.toLowerCase() === WETH_CONTRACT && meta.ticker === "ETH";
+  if (isWethProxy) meta = { ...meta, ticker: "ETH" };
+
+  // Only supported for ETH chain ERC-20 tokens (or WETH proxy)
   const isEthChain = chain === "eth" || chain === "ethereum";
   if (!contract || contract === "null" || !isEthChain) {
     return nullResult(meta, chain);

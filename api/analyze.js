@@ -100,9 +100,14 @@ async function analyze(query) {
   // Score 1–3 with exchange penalty (capped at 3)
   const score = scoreHolderConcentration(metrics);
 
-  // Parameter 2: Liquidity Depth (ETH chain ERC-20 tokens only, runs in parallel)
+  // Parameter 2: Liquidity Depth
+  // For ETH native: use WETH contract as liquidity proxy (WETH = Wrapped ETH,
+  // its DEX liquidity directly reflects ETH market liquidity)
   const meta = { ticker: coin.ticker, marketCap: coin.marketCap };
-  const liquidity = await fetchLiquidity(coin.address, coin.chain, meta);
+  const liqAddress = (coin.ticker === "ETH" && !coin.address)
+    ? "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"  // WETH proxy for ETH native
+    : coin.address;
+  const liquidity = await fetchLiquidity(liqAddress, coin.chain, meta);
 
   return {
     coin,

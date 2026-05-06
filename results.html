@@ -285,7 +285,7 @@ tr:hover td{background:rgba(255,255,255,0.015)}
           </svg>
           <div class="dial-center">
             <div class="dial-score" id="dialScore">—</div>
-            <div class="dial-denom">/10</div>
+            <div class="dial-denom" id="dialDenom">/3</div>
           </div>
         </div>
         <div class="dial-rating" id="dialRating">—</div>
@@ -341,7 +341,10 @@ const SCORE_COLORS = {
 function scoreColor(s){ return SCORE_COLORS.arc[Math.min(10,Math.max(1,Math.round(s)))-1] }
 
 // ── dial drawing ───────────────────────────────────────────────
-function drawDial(score){
+function drawDial(n, maxScore){
+  maxScore = maxScore || 3;
+  const denomEl=document.getElementById("dialDenom");
+  if(denomEl) denomEl.textContent="/"+maxScore;
   const cx=90,cy=90,r=72;
   const startA=-210, totalArc=240; // degrees
 
@@ -361,31 +364,31 @@ function drawDial(score){
   document.getElementById('dialBg').setAttribute('d', arcPath(startA, startA+totalArc, r));
 
   // score arc
-  const pct = Math.min(10,Math.max(0,score))/10;
-  const endAng = startA + totalArc*pct;
-  const col = scoreColor(score);
+  const pct = Math.min(maxScore, Math.max(0, n)) / maxScore;
+  const endAng = startA + totalArc * pct;
+  const col = scoreColor(Math.round((n / maxScore) * 3)); // normalise to 1-3 for colour
   const arcEl = document.getElementById('dialArc');
   arcEl.setAttribute('d', arcPath(startA, endAng, r));
   arcEl.setAttribute('stroke', col);
 
-  // tick marks at 1–10
+  // tick marks — one per possible score value
   const tickG = document.getElementById('ticks');
   tickG.innerHTML='';
-  for(let i=1;i<=10;i++){
-    const ang = startA + totalArc*(i/10);
-    const [ox,oy]=polarXY(ang,r);
-    const [ix,iy]=polarXY(ang,r-10);
-    const line=document.createElementNS('http://www.w3.org/2000/svg','line');
-    line.setAttribute('x1',ox);line.setAttribute('y1',oy);
-    line.setAttribute('x2',ix);line.setAttribute('y2',iy);
-    line.setAttribute('stroke',i<=Math.round(score)?col:'#1a2030');
-    line.setAttribute('stroke-width','2');line.setAttribute('stroke-linecap','round');
+  for(let i = 1; i <= maxScore; i++){
+    const ang = startA + totalArc * (i / maxScore);
+    const [ox,oy] = polarXY(ang, r);
+    const [ix,iy] = polarXY(ang, r - 10);
+    const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+    line.setAttribute('x1',ox); line.setAttribute('y1',oy);
+    line.setAttribute('x2',ix); line.setAttribute('y2',iy);
+    line.setAttribute('stroke', i <= n ? col : '#1a2030');
+    line.setAttribute('stroke-width','2'); line.setAttribute('stroke-linecap','round');
     tickG.appendChild(line);
   }
 
   // number + colour
   const scoreEl = document.getElementById('dialScore');
-  scoreEl.textContent = score.toFixed(1);
+  scoreEl.textContent = n != null ? n : '—';
   scoreEl.style.color = col;
   document.getElementById('dialRating').style.color = col;
   document.documentElement.style.setProperty('--score-color', col);
@@ -528,11 +531,14 @@ function showError(msg,q){
 function render(data){
   const {coin,metrics,parameter,holders,upcoming,liquidity}=data;
 
-  // ── Overall score: average of all live parameter scores, rounded up (conservative)
+  // ── Overall score: sum of live parameter scores
+  // 2-3 = Low Risk, 4 = Medium Risk, 5-6 = High Risk
   const liveScores=[parameter.score];
   if(liquidity&&liquidity.score!==null) liveScores.push(liquidity.score);
-  const overallScore=Math.min(3,Math.ceil(liveScores.reduce((a,b)=>a+b,0)/liveScores.length));
-  const score=overallScore;
+  const totalScore=liveScores.reduce((a,b)=>a+b,0);
+  const maxPossible=liveScores.length*3;
+  const overallRisk=totalScore<=3?"Low Risk":totalScore===4?"Medium Risk":"High Risk";
+  const score=totalScore;
 
   // Coin header
   const icon=document.getElementById('coinIcon');
@@ -558,11 +564,11 @@ function render(data){
   ].join('');
 
   // Dial — combined overall score
-  drawDial(score);
+  drawDial(score, maxPossible);
   const overallRating=score===1?"Low Risk":score===2?"Medium Risk":"High Risk";
-  document.getElementById('dialRating').textContent=overallRating;
+  document.getElementById('dialRating').textContent=overallRisk;
   document.getElementById('dialSummary').textContent=liveScores.length>1
-    ? `Overall: Holder Concentration (${parameter.score}/3)·Liquidity Depth (${liquidity.score}/3)`
+    ? `HC (${parameter.score}/3) + Liquidity (${liquidity.score}/3) = ${totalScore}/6`
     : parameter.summary;
 
   // Breakdown rows
@@ -591,7 +597,7 @@ function render(data){
       <div class="ps-num">0${p.id}</div>
       <div class="ps-name">${p.name||''}</div>
       ${p.score!==null
-        ?`<div class="ps-score" style="color:${pCol}">${p.score}</div>`
+        ?`<div class="ps-score" style="color:${pCol}">${p.score}<span style="font-size:.6em;opacity:.6">/3</span></div>`
         :`<div class="ps-soon">Coming soon</div>`}
     </div>`;
   }).join('');

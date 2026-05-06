@@ -38,7 +38,8 @@ const MIN_PAIR_LIQUIDITY_USD = 1000;
 // ─────────────────────────────────────────────────────────────────────────────
 export async function fetchLiquidity(contract, chain, meta = {}) {
   // Only supported for ETH chain ERC-20 tokens
-  if (!contract || contract === "null" || chain !== "eth") {
+  const isEthChain = chain === "eth" || chain === "ethereum";
+  if (!contract || contract === "null" || !isEthChain) {
     return nullResult(meta, chain);
   }
 
@@ -173,7 +174,7 @@ function buildBreakdown(totalLiqUsd, liquidityPct, pairCount, marketCap) {
 function nullResult(meta, chain) {
   const reason = !chain || chain === "null"
     ? "No chain data available"
-    : chain !== "eth"
+    : !isEthChain
       ? `Liquidity analysis only supported for ETH chain (this token is on ${chain})`
       : "No contract address";
   return {

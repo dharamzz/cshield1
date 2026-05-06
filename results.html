@@ -528,15 +528,11 @@ function showError(msg,q){
 function render(data){
   const {coin,metrics,parameter,holders,upcoming,liquidity}=data;
 
-  // ── Overall score: average of all live parameter scores (rounded up = conservative)
-  // Only includes parameters that have a real score (not null)
-  const liveScores = [parameter.score];
-  if (liquidity && liquidity.score !== null) liveScores.push(liquidity.score);
-  const overallScore = Math.min(3, Math.ceil(
-    liveScores.reduce((a, b) => a + b, 0) / liveScores.length
-  ));
-
-  const score = overallScore;
+  // ── Overall score: average of all live parameter scores, rounded up (conservative)
+  const liveScores=[parameter.score];
+  if(liquidity&&liquidity.score!==null) liveScores.push(liquidity.score);
+  const overallScore=Math.min(3,Math.ceil(liveScores.reduce((a,b)=>a+b,0)/liveScores.length));
+  const score=overallScore;
 
   // Coin header
   const icon=document.getElementById('coinIcon');
@@ -561,21 +557,18 @@ function render(data){
     coin.marketCap?`<div class="meta-item"><div class="meta-lbl">Market Cap</div><div class="meta-val">$${(coin.marketCap/1e9).toFixed(2)}B</div></div>`:'',
   ].join('');
 
-  // Dial — shows overall combined score across all live parameters
+  // Dial — combined overall score
   drawDial(score);
-  const overallRating = score===1?"Low Risk":score===2?"Medium Risk":"High Risk";
-  const liveCount = liveScores.length;
-  document.getElementById('dialRating').textContent = overallRating;
-  document.getElementById('dialSummary').textContent = liveCount > 1
-    ? `Overall risk across ${liveCount} parameters: Holder Concentration (${parameter.score}/3)` +
-      (liquidity?.score !== null ? ` · Liquidity Depth (${liquidity.score}/3)` : "")
+  const overallRating=score===1?"Low Risk":score===2?"Medium Risk":"High Risk";
+  document.getElementById('dialRating').textContent=overallRating;
+  document.getElementById('dialSummary').textContent=liveScores.length>1
+    ? `Overall: Holder Concentration (${parameter.score}/3)·Liquidity Depth (${liquidity.score}/3)`
     : parameter.summary;
 
   // Breakdown rows
   const bdEl=document.getElementById('bdRows');
   bdEl.innerHTML=parameter.breakdown.map(b=>{
-    const maxPct=100;
-    const fillW=Math.min(100,parseFloat(b.value)*2); // scale bar reasonably
+    const fillW=Math.min(100,parseFloat(b.value)*2);
     return `<div class="bd-row risk-${b.risk}">
       <div class="bd-label">${b.label}</div>
       <div class="bd-val">${b.value}</div>
@@ -584,23 +577,31 @@ function render(data){
     </div>`;
   }).join('');
 
-  // Param strip
+  // Param strip — build safely, never access undefined upcoming index
   const strip=document.getElementById('paramStrip');
-  const col=scoreColor(score);
-  const allParams=[{id:1,name:'Holder Concentration',score},{...upcoming[0]},{...upcoming[1]},{...upcoming[2]},{...upcoming[3]}];
-  strip.innerHTML=allParams.map(p=>`
-    <div class="ps-card ${p.score!==null?'ps-live':''}">
+  const liqScore=liquidity?.score??null;
+  const allParams=[
+    {id:1,name:'Holder Concentration',score:parameter.score},
+    {id:2,name:'Liquidity Depth',score:liqScore},
+    ...(upcoming||[]).slice(0,3)
+  ];
+  strip.innerHTML=allParams.map(p=>{
+    const pCol=p.score!==null?scoreColor(p.score):'';
+    return `<div class="ps-card ${p.score!==null?'ps-live':''}">
       <div class="ps-num">0${p.id}</div>
-      <div class="ps-name">${p.name}</div>
+      <div class="ps-name">${p.name||''}</div>
       ${p.score!==null
-        ? `<div class="ps-score" style="color:${col}">${p.score}</div>`
-        : `<div class="ps-soon">Coming soon</div>`}
-    </div>
-  `).join('');
+        ?`<div class="ps-score" style="color:${pCol}">${p.score}</div>`
+        :`<div class="ps-soon">Coming soon</div>`}
+    </div>`;
+  }).join('');
 
   // Holders
   document.getElementById('dataSrc').textContent=coin.source||'';
   renderHolders(holders,10);
+
+  // Liquidity section
+  if(typeof renderLiquidity==='function') renderLiquidity(liquidity);
 
   // Data note
   document.getElementById('dataNote').innerHTML=

@@ -71,17 +71,6 @@ nav{position:sticky;top:0;z-index:10;display:flex;align-items:center;justify-con
   cursor:pointer;transition:all .15s;white-space:nowrap;flex-shrink:0}
 .copy-addr-btn:hover{border-color:var(--accent);color:var(--accent)}
 .copy-addr-btn.copied{border-color:#4dffb0;color:#4dffb0}
-.liq-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.75rem;margin-bottom:1rem}
-.liq-stat{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:.75rem 1rem}
-.liq-stat-label{font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.3rem}
-.liq-stat-value{font-size:1.1rem;font-weight:700;font-family:var(--mono)}
-.liq-pairs{width:100%;border-collapse:collapse;font-size:.75rem;margin-top:.5rem}
-.liq-pairs th{background:var(--surface2);border-bottom:1px solid var(--border2);padding:.5rem .75rem;text-align:left;font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
-.liq-pairs td{padding:.5rem .75rem;border-bottom:1px solid var(--border);vertical-align:middle}
-.liq-pairs tr:last-child td{border-bottom:none}
-.liq-pairs a{color:var(--accent);text-decoration:none;font-size:.72rem}
-.liq-pairs a:hover{text-decoration:underline}
-.liq-na{padding:1rem;text-align:center;color:var(--muted);font-size:.82rem}
 .dl-wallets-btn{background:none;border:1px solid var(--border);border-radius:4px;
   color:var(--muted);font-family:var(--mono);font-size:10px;padding:3px 10px;
   cursor:pointer;transition:all .15s;white-space:nowrap}
@@ -337,15 +326,6 @@ tr:hover td{background:rgba(255,255,255,0.015)}
       </table>
     </div>
 
-    <!-- Liquidity Depth Section -->
-    <div class="holders-section" id="liquiditySection" style="display:none">
-      <div class="section-hdr">
-        <div class="section-title">Liquidity Depth</div>
-        <div class="section-src" id="liquiditySrc"></div>
-      </div>
-      <div id="liquidityContent"></div>
-    </div>
-
     <!-- Note -->
     <div class="data-note" id="dataNote"></div>
   </div>
@@ -547,7 +527,16 @@ function showError(msg,q){
 // ── RENDER ────────────────────────────────────────────────────
 function render(data){
   const {coin,metrics,parameter,holders,upcoming,liquidity}=data;
-  const score=parameter.score;
+
+  // ── Overall score: average of all live parameter scores (rounded up = conservative)
+  // Only includes parameters that have a real score (not null)
+  const liveScores = [parameter.score];
+  if (liquidity && liquidity.score !== null) liveScores.push(liquidity.score);
+  const overallScore = Math.min(3, Math.ceil(
+    liveScores.reduce((a, b) => a + b, 0) / liveScores.length
+  ));
+
+  const score = overallScore;
 
   // Coin header
   const icon=document.getElementById('coinIcon');
@@ -572,10 +561,15 @@ function render(data){
     coin.marketCap?`<div class="meta-item"><div class="meta-lbl">Market Cap</div><div class="meta-val">$${(coin.marketCap/1e9).toFixed(2)}B</div></div>`:'',
   ].join('');
 
-  // Dial
+  // Dial — shows overall combined score across all live parameters
   drawDial(score);
-  document.getElementById('dialRating').textContent=parameter.rating;
-  document.getElementById('dialSummary').textContent=parameter.summary;
+  const overallRating = score===1?"Low Risk":score===2?"Medium Risk":"High Risk";
+  const liveCount = liveScores.length;
+  document.getElementById('dialRating').textContent = overallRating;
+  document.getElementById('dialSummary').textContent = liveCount > 1
+    ? `Overall risk across ${liveCount} parameters: Holder Concentration (${parameter.score}/3)` +
+      (liquidity?.score !== null ? ` · Liquidity Depth (${liquidity.score}/3)` : "")
+    : parameter.summary;
 
   // Breakdown rows
   const bdEl=document.getElementById('bdRows');
@@ -590,33 +584,23 @@ function render(data){
     </div>`;
   }).join('');
 
-  // Param strip — parameter 2 is Liquidity Depth (live score when available)
+  // Param strip
   const strip=document.getElementById('paramStrip');
-  const liqScore = liquidity?.score ?? null;
-  const liqParam = { id:2, name:'Liquidity Depth', score: liqScore };
-  const allParams = [
-    { id:1, name:'Holder Concentration', score },
-    liqParam,
-    ...(upcoming||[])
-  ];
-  strip.innerHTML=allParams.map(p=>{
-    const pCol = scoreColor(p.score);
-    return `
+  const col=scoreColor(score);
+  const allParams=[{id:1,name:'Holder Concentration',score},{...upcoming[0]},{...upcoming[1]},{...upcoming[2]},{...upcoming[3]}];
+  strip.innerHTML=allParams.map(p=>`
     <div class="ps-card ${p.score!==null?'ps-live':''}">
       <div class="ps-num">0${p.id}</div>
       <div class="ps-name">${p.name}</div>
       ${p.score!==null
-        ? `<div class="ps-score" style="color:${pCol}">${p.score}</div>`
+        ? `<div class="ps-score" style="color:${col}">${p.score}</div>`
         : `<div class="ps-soon">Coming soon</div>`}
-    </div>`;
-  }).join('');
+    </div>
+  `).join('');
 
   // Holders
   document.getElementById('dataSrc').textContent=coin.source||'';
   renderHolders(holders,10);
-
-  // Liquidity Depth
-  renderLiquidity(liquidity);
 
   // Data note
   document.getElementById('dataNote').innerHTML=
@@ -680,48 +664,6 @@ function downloadWallets(){
   a.href = URL.createObjectURL(blob);
   a.download = (coinTicker || coinName).replace(/[^a-z0-9]/gi,"_") + "_holders.csv";
   a.click();
-}
-
-function fmtUsd(n){
-  if(n==null||n===0) return "$0";
-  if(n>=1e9) return "$"+(n/1e9).toFixed(2)+"B";
-  if(n>=1e6) return "$"+(n/1e6).toFixed(2)+"M";
-  if(n>=1e3) return "$"+(n/1e3).toFixed(1)+"K";
-  return "$"+n.toFixed(0);
-}
-
-function renderLiquidity(liq){
-  const sec=document.getElementById("liquiditySection");
-  const content=document.getElementById("liquidityContent");
-  const srcEl=document.getElementById("liquiditySrc");
-  if(!liq){sec.style.display="none";return;}
-  sec.style.display="block";
-  srcEl.textContent="DexScreener (live)";
-  if(liq.score===null){
-    content.innerHTML=`<div class="liq-na">${liq.summary||"Liquidity data not available for this coin."}</div>`;
-    return;
-  }
-  const riskCol=liq.score===1?"#4dffb0":liq.score===2?"#ffd447":"#ff6b35";
-  const statsHtml=`<div class="liq-grid">
-    <div class="liq-stat"><div class="liq-stat-label">Liquidity Score</div><div class="liq-stat-value" style="color:${riskCol}">${liq.score}/3 — ${liq.rating}</div></div>
-    <div class="liq-stat"><div class="liq-stat-label">Total DEX Liquidity</div><div class="liq-stat-value">${fmtUsd(liq.liquidityUsd)}</div></div>
-    <div class="liq-stat"><div class="liq-stat-label">Liquidity / Market Cap</div><div class="liq-stat-value" style="color:${riskCol}">${liq.liquidityPct!=null?liq.liquidityPct.toFixed(2)+"%":"—"}</div></div>
-    <div class="liq-stat"><div class="liq-stat-label">Active DEX Pairs</div><div class="liq-stat-value">${liq.pairCount||0}</div></div>
-  </div>`;
-  var pairsHtml="";
-  if(liq.topPairs&&liq.topPairs.length){
-    pairsHtml=`<table class="liq-pairs"><thead><tr><th>DEX</th><th>Pair</th><th>Liquidity</th><th>24h Volume</th><th>24h Txns</th><th></th></tr></thead><tbody>`+
-    liq.topPairs.map(p=>`<tr>
-      <td>${p.dex}</td>
-      <td style="font-family:var(--mono);font-size:.72rem">${p.baseSymbol}/${p.quoteSymbol}</td>
-      <td>${fmtUsd(p.liquidityUsd)}</td>
-      <td>${fmtUsd(p.volume24h)}</td>
-      <td>${p.txns24h.toLocaleString()}</td>
-      <td>${p.url?`<a href="${p.url}" target="_blank" rel="noopener">View &#8599;</a>`:""}</td>
-    </tr>`).join("")+`</tbody></table>`;
-  }
-  const summaryHtml=`<div style="font-size:.78rem;color:var(--muted);margin-top:.75rem;padding:.5rem .25rem">${liq.summary}</div>`;
-  content.innerHTML=statsHtml+pairsHtml+summaryHtml;
 }
 
 function showHolders(n,btn){

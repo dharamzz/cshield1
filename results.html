@@ -230,30 +230,6 @@ tr:hover td{background:rgba(255,255,255,0.015)}
 .pbadge.btc{background:rgba(255,165,0,.15);color:#ffa500;border:1px solid rgba(255,165,0,.3)}
 .pchain{font-family:var(--mono);font-size:10px;color:var(--muted)}
 .pcontract{font-family:var(--mono);font-size:9px;color:var(--dim)}
-
-.liq-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.75rem;margin-bottom:1rem}
-.liq-stat{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:.75rem 1rem}
-.liq-stat-label{font-size:.65rem;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:.3rem}
-.liq-stat-value{font-size:1rem;font-weight:700;font-family:var(--mono)}
-.liq-subtitle{font-size:.72rem;font-weight:600;color:var(--muted);margin:.75rem 0 .4rem;text-transform:uppercase;letter-spacing:.07em}
-.liq-lock-table{width:100%;border-collapse:collapse;font-size:.74rem;margin-bottom:.75rem}
-.liq-lock-table th{background:var(--surface2);border-bottom:1px solid var(--border2);
-  padding:.45rem .65rem;text-align:left;font-size:.63rem;color:var(--muted);
-  text-transform:uppercase;letter-spacing:.06em}
-.liq-lock-table td{padding:.45rem .65rem;border-bottom:1px solid var(--border);vertical-align:middle}
-.liq-lock-table tr:last-child td{border-bottom:none}
-.trust-burned{color:#4dffb0;font-weight:700}
-.trust-high{color:#4dffb0}
-.trust-medium{color:#ffd447}
-.trust-low{color:#ff9f43}
-.trust-vulnerable{color:#ff6b35}
-.vuln-flag{font-size:.65rem;background:rgba(255,107,53,.15);border:1px solid rgba(255,107,53,.3);
-  color:#ff6b35;border-radius:3px;padding:.1rem .4rem;margin-left:.35rem;vertical-align:middle}
-.weight-bar{display:flex;gap:.5rem;margin:.75rem 0;font-size:.72rem}
-.weight-seg{flex:1;text-align:center;padding:.3rem;border-radius:4px;background:var(--surface2);border:1px solid var(--border)}
-.weight-seg-label{font-size:.6rem;color:var(--muted);text-transform:uppercase}
-.weight-seg-val{font-weight:700;font-family:var(--mono)}
-.liq-na{padding:1rem;text-align:center;color:var(--muted);font-size:.82rem}
 </style>
 </head>
 <body>
@@ -309,7 +285,7 @@ tr:hover td{background:rgba(255,255,255,0.015)}
           </svg>
           <div class="dial-center">
             <div class="dial-score" id="dialScore">—</div>
-            <div class="dial-denom">/10</div>
+            <div class="dial-denom" id="dialDenom">/3</div>
           </div>
         </div>
         <div class="dial-rating" id="dialRating">—</div>
@@ -351,13 +327,6 @@ tr:hover td{background:rgba(255,255,255,0.015)}
     </div>
 
     <!-- Note -->
-    <div class="holders-section" id="liquiditySection" style="display:none">
-      <div class="section-hdr">
-        <div class="section-title">Liquidity Depth</div>
-        <div class="section-src" id="liquiditySrc"></div>
-      </div>
-      <div id="liquidityContent"></div>
-    </div>
     <div class="data-note" id="dataNote"></div>
   </div>
 
@@ -372,7 +341,10 @@ const SCORE_COLORS = {
 function scoreColor(s){ return SCORE_COLORS.arc[Math.min(10,Math.max(1,Math.round(s)))-1] }
 
 // ── dial drawing ───────────────────────────────────────────────
-function drawDial(score){
+function drawDial(n, maxScore){
+  maxScore=maxScore||3;
+  const denomEl=document.getElementById("dialDenom");
+  if(denomEl) denomEl.textContent="/"+maxScore;
   const cx=90,cy=90,r=72;
   const startA=-210, totalArc=240; // degrees
 
@@ -392,9 +364,9 @@ function drawDial(score){
   document.getElementById('dialBg').setAttribute('d', arcPath(startA, startA+totalArc, r));
 
   // score arc
-  const pct = Math.min(10,Math.max(0,score))/10;
+  const pct = Math.min(maxScore,Math.max(0,n))/maxScore;
   const endAng = startA + totalArc*pct;
-  const col = scoreColor(score);
+  const col = scoreColor(Math.ceil((n/maxScore)*3));
   const arcEl = document.getElementById('dialArc');
   arcEl.setAttribute('d', arcPath(startA, endAng, r));
   arcEl.setAttribute('stroke', col);
@@ -402,21 +374,21 @@ function drawDial(score){
   // tick marks at 1–10
   const tickG = document.getElementById('ticks');
   tickG.innerHTML='';
-  for(let i=1;i<=10;i++){
-    const ang = startA + totalArc*(i/10);
+  for(let i=1;i<=maxScore;i++){
+    const ang = startA + totalArc*(i/maxScore);
     const [ox,oy]=polarXY(ang,r);
     const [ix,iy]=polarXY(ang,r-10);
     const line=document.createElementNS('http://www.w3.org/2000/svg','line');
     line.setAttribute('x1',ox);line.setAttribute('y1',oy);
     line.setAttribute('x2',ix);line.setAttribute('y2',iy);
-    line.setAttribute('stroke',i<=Math.round(score)?col:'#1a2030');
+    line.setAttribute('stroke',i<=n?col:'#1a2030');
     line.setAttribute('stroke-width','2');line.setAttribute('stroke-linecap','round');
     tickG.appendChild(line);
   }
 
   // number + colour
   const scoreEl = document.getElementById('dialScore');
-  scoreEl.textContent = score.toFixed(1);
+  scoreEl.textContent = n!=null?n:'—';
   scoreEl.style.color = col;
   document.getElementById('dialRating').style.color = col;
   document.documentElement.style.setProperty('--score-color', col);
@@ -559,11 +531,31 @@ function showError(msg,q){
 function render(data){
   const {coin,metrics,parameter,holders,upcoming,liquidity}=data;
 
-  // ── Overall score: average of all live parameter scores, rounded up (conservative)
-  const liveScores=[parameter.score];
-  if(liquidity&&liquidity.score!==null) liveScores.push(liquidity.score);
-  const overallScore=Math.min(3,Math.ceil(liveScores.reduce((a,b)=>a+b,0)/liveScores.length));
-  const score=overallScore;
+  // ── Overall score: sum for display, risk driven by max(HC, Liq)
+  // Matches risk table exactly:
+  //   max=1 → Low Risk,  max=2 → Medium Risk,  max=3 → High Risk
+  // e.g. HC(3)+Liq(1)=High, HC(1)+Liq(3)=Medium — same total, correct different risk
+  const hcScore   = parameter.score;
+  const liqScore  = (liquidity && liquidity.score !== null) ? liquidity.score : null;
+  const totalScore = liqScore !== null ? hcScore + liqScore : hcScore;
+  const maxPossible = liqScore !== null ? 6 : 3;
+  // Risk rule (exactly per table):
+  //   Base risk = HC score (1=Low, 2=Medium, 3=High)
+  //   If Liq=3 and HC<3: bump up one level
+  //   HC=1+Liq≤2=Low, HC=1+Liq=3=Medium
+  //   HC=2+Liq≤2=Medium, HC=2+Liq=3=High
+  //   HC=3+any=High
+  let overallRisk;
+  if(liqScore===null){
+    overallRisk = hcScore===1?"Low Risk":hcScore===2?"Medium Risk":"High Risk";
+  } else if(hcScore===3 || (hcScore===2 && liqScore===3)){
+    overallRisk = "High Risk";
+  } else if(hcScore===2 || (hcScore===1 && liqScore===3)){
+    overallRisk = "Medium Risk";
+  } else {
+    overallRisk = "Low Risk";
+  }
+  const score = totalScore;
 
   // Coin header
   const icon=document.getElementById('coinIcon');
@@ -589,11 +581,10 @@ function render(data){
   ].join('');
 
   // Dial — combined overall score
-  drawDial(score);
-  const overallRating=score===1?"Low Risk":score===2?"Medium Risk":"High Risk";
-  document.getElementById('dialRating').textContent=overallRating;
-  document.getElementById('dialSummary').textContent=liveScores.length>1
-    ? `Overall: Holder Concentration (${parameter.score}/3)·Liquidity Depth (${liquidity.score}/3)`
+  drawDial(score, maxPossible);
+  document.getElementById('dialRating').textContent=overallRisk;
+  document.getElementById('dialSummary').textContent=liqScore!==null
+    ? `HC (${hcScore}/3) + Liquidity (${liqScore}/3) = ${totalScore}/6`
     : parameter.summary;
 
   // Breakdown rows
@@ -610,9 +601,8 @@ function render(data){
 
   // Param strip — build safely, never access undefined upcoming index
   const strip=document.getElementById('paramStrip');
-  const liqScore=liquidity?.score??null;
   const allParams=[
-    {id:1,name:'Holder Concentration',score:parameter.score},
+    {id:1,name:'Holder Concentration',score:hcScore},
     {id:2,name:'Liquidity Depth',score:liqScore},
     ...(upcoming||[]).slice(0,3)
   ];
@@ -696,123 +686,6 @@ function downloadWallets(){
   a.href = URL.createObjectURL(blob);
   a.download = (coinTicker || coinName).replace(/[^a-z0-9]/gi,"_") + "_holders.csv";
   a.click();
-}
-
-
-function fmtUsd(n){
-  if(n==null) return "—";
-  if(n>=1e9) return "$"+(n/1e9).toFixed(2)+"B";
-  if(n>=1e6) return "$"+(n/1e6).toFixed(2)+"M";
-  if(n>=1e3) return "$"+(n/1e3).toFixed(1)+"K";
-  return "$"+Number(n).toFixed(0);
-}
-function trustClass(t){
-  return({burned:"trust-burned",high:"trust-high",medium:"trust-medium",low:"trust-low",vulnerable:"trust-vulnerable"})[t]||"";
-}
-function trustLabel(t){
-  return({burned:"🔥 Burned",high:"High",medium:"Medium",low:"Low",vulnerable:"⚠ Vulnerable"})[t]||t;
-}
-function renderLiquidity(liq){
-  const sec=document.getElementById("liquiditySection");
-  const content=document.getElementById("liquidityContent");
-  const srcEl=document.getElementById("liquiditySrc");
-  if(!liq){sec.style.display="none";return;}
-  sec.style.display="block";
-  srcEl.textContent="On-chain scan · Ethereum RPC";
-
-  if(liq.score===null){
-    content.innerHTML=`<div class="liq-na">${liq.summary||"Liquidity scan not available for this coin."}</div>`;
-    return;
-  }
-
-  const rCol=liq.score===1?"#4dffb0":liq.score===2?"#ffd447":"#ff6b35";
-
-  // Stats grid
-  const statsHtml=`<div class="liq-grid">
-    <div class="liq-stat">
-      <div class="liq-stat-label">Risk Score</div>
-      <div class="liq-stat-value" style="color:${rCol}">${liq.score}/3 — ${liq.rating}</div>
-    </div>
-    <div class="liq-stat">
-      <div class="liq-stat-label">Safety Score</div>
-      <div class="liq-stat-value" style="color:${rCol}">${liq.safetyScore}/100</div>
-    </div>
-    <div class="liq-stat">
-      <div class="liq-stat-label">Trusted Locked</div>
-      <div class="liq-stat-value" style="color:${rCol}">${liq.trustedLockedPct??0}%</div>
-    </div>
-    <div class="liq-stat">
-      <div class="liq-stat-label">Total Locked</div>
-      <div class="liq-stat-value">${liq.totalLockedPct??0}%</div>
-    </div>
-    <div class="liq-stat">
-      <div class="liq-stat-label">V2 Pairs Found</div>
-      <div class="liq-stat-value">${liq.v2PairCount??0}</div>
-    </div>
-    <div class="liq-stat">
-      <div class="liq-stat-label">V3 Pools Found</div>
-      <div class="liq-stat-value">${liq.v3PoolCount??0}</div>
-    </div>
-  </div>`;
-
-  // Score weight breakdown bar
-  const wb=liq.weightBreakdown;
-  const weightHtml=wb?`
-    <div class="liq-subtitle">Score Breakdown (Weighted)</div>
-    <div class="weight-bar">
-      <div class="weight-seg">
-        <div class="weight-seg-label">Locked % (80%)</div>
-        <div class="weight-seg-val">${wb.lockedWeight}/80</div>
-      </div>
-      <div class="weight-seg">
-        <div class="weight-seg-label">Duration >6mo (20%)</div>
-        <div class="weight-seg-val">${wb.durationScore}/20</div>
-      </div>
-      <div class="weight-seg" style="background:var(--surface3,#0d1117)">
-        <div class="weight-seg-label">Total</div>
-        <div class="weight-seg-val" style="color:${rCol}">${wb.total}/100</div>
-      </div>
-    </div>`:"";
-
-  // Lock positions table
-  let locksHtml="";
-  if(liq.locks&&liq.locks.length){
-    locksHtml=`<div class="liq-subtitle">Detected Locks (${liq.locks.length})</div>
-    <table class="liq-lock-table">
-      <thead><tr><th>Provider</th><th>Type</th><th>Trust</th><th>Locked %</th><th>Unlock</th><th>Contract</th></tr></thead>
-      <tbody>`+
-      liq.locks.map(l=>`<tr>
-        <td>${l.provider}${l.isVulnerable?`<span class="vuln-flag">RISK</span>`:""}</td>
-        <td>${l.isPermanent?"Permanent":"Locker"}</td>
-        <td class="${trustClass(l.trustLevel)}">${trustLabel(l.trustLevel)}</td>
-        <td style="font-family:var(--mono)">${Number(l.lockedPct).toFixed(2)}%</td>
-        <td>${l.unlockDate?l.unlockDate.toLocaleDateString():l.isPermanent?"Never":"Unknown"}</td>
-        <td>${l.isContract===true?"✓ Contract":l.isPermanent?"N/A":"—"}</td>
-      </tr>`).join("")+
-      `</tbody></table>`;
-  } else {
-    locksHtml=`<div class="liq-na" style="text-align:left;padding:.5rem 0">No locks detected across ${liq.pairCount??0} pair(s).</div>`;
-  }
-
-  // Pairs discovered
-  let pairsHtml="";
-  if(liq.pairs&&liq.pairs.length){
-    pairsHtml=`<div class="liq-subtitle">Pairs Discovered (${liq.pairs.length})</div>
-    <table class="liq-lock-table">
-      <thead><tr><th>Protocol</th><th>Version</th><th>Base</th><th>Fee Tier</th></tr></thead>
-      <tbody>`+
-      liq.pairs.map(p=>`<tr>
-        <td>${p.protocol}</td>
-        <td>${p.version?.toUpperCase()||"—"}</td>
-        <td>${p.base}</td>
-        <td>${p.fee?(p.fee/10000).toFixed(2)+"%":"—"}</td>
-      </tr>`).join("")+
-      `</tbody></table>`;
-  }
-
-  const summaryHtml=`<div style="font-size:.78rem;color:var(--muted);margin-top:.75rem;line-height:1.6">${liq.summary}</div>`;
-
-  content.innerHTML=statsHtml+weightHtml+locksHtml+pairsHtml+summaryHtml;
 }
 
 function showHolders(n,btn){
